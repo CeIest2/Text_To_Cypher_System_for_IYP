@@ -5,12 +5,11 @@ from utils.helpers import load_schema_doc
 
 logger = logging.getLogger(__name__)
 
-def generate_cypher_query(user_question: str, session_id: str = "gen_session_default", trace_id: str = None, previous_history: str = "No previous attempts.") -> Dict[str, Any]:
+def generate_cypher_query(user_question: str, session_id: str = "gen_session_default", trace_id: str = None, previous_history: str = "No previous attempts.", trace_name: str = "cypher_generation") -> Dict[str, Any]:
 
     schema_doc  = load_schema_doc()
     variables   = {"schema_doc": schema_doc, "question": user_question, "previous_history": previous_history}
-    response    = call_llm_with_tracking(prompt_name="iyp-cypher-generator", variables=variables, session_id=session_id, trace_id=trace_id, trace_name="cypher_generation", tags=["generator"], response_format="json" )
-
+    response    = call_llm_with_tracking(prompt_name="iyp-cypher-generator", variables=variables, session_id=session_id, trace_id=trace_id, trace_name=trace_name, tags=["generator"], response_format="json" )
     if response["success"]:
         try:
             content = json.loads(response["content"])

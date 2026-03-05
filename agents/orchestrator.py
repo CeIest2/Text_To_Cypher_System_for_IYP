@@ -23,9 +23,10 @@ def run_autonomous_loop(question: str, max_retries: int = 5):
 
         for attempt in range(max_retries):
             current_attempt = attempt + 1
+            attempt_prefix = f"[Attempt {current_attempt}]"
             print(f"\n--- 🔄 ATTEMPT {current_attempt}/{max_retries} ---")
 
-            gen_result = generate_cypher_query(question, session_id=session_id, trace_id=run_id, previous_history=history)
+            gen_result = generate_cypher_query(question, session_id=session_id, trace_id=run_id, previous_history=history, trace_name=f"{attempt_prefix} Cypher Generation")
             
             if not gen_result["success"]:
                 print(f"❌ Critical Generation Error: {gen_result.get('error_message')}")
@@ -34,7 +35,7 @@ def run_autonomous_loop(question: str, max_retries: int = 5):
             cypher       = gen_result["cypher"]
             explanation  = gen_result["explanation"]
             db_result    = test_cypher_on_iyp(cypher)
-            eval_verdict = evaluate_cypher_result(question=question, cypher=cypher, explanation=explanation, db_output=db_result, session_id=session_id, trace_id=run_id, oracle_expectations=oracle_expectations)
+            eval_verdict = evaluate_cypher_result(question=question, cypher=cypher, explanation=explanation, db_output=db_result, session_id=session_id, trace_id=run_id, oracle_expectations=oracle_expectations, trace_name=f"{attempt_prefix} Evaluation")
 
             if eval_verdict.get("is_valid"):
                 print(f"✅ SUCCESS at attempt {current_attempt}!")
@@ -46,7 +47,7 @@ def run_autonomous_loop(question: str, max_retries: int = 5):
                 analysis = eval_verdict.get('analysis')
                 print(f"⚠️ Validation Failed [{error_type}]. Launching Investigator...")
                 
-                investigation_result = run_investigation(question=question, failed_cypher=cypher, error_message=f"Error Type: {error_type} | Analysis: {analysis}", session_id=session_id, trace_id=run_id, previous_history=history )
+                investigation_result = run_investigation(question=question, failed_cypher=cypher, error_message=f"Error Type: {error_type} | Analysis: {analysis}", session_id=session_id, trace_id=run_id, previous_history=history,trace_prefix=attempt_prefix )
                 
                 investigation_report = investigation_result.get("report", "No report.")
                 queries_tested       = investigation_result.get("queries_tested", [])

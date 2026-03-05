@@ -5,12 +5,11 @@ from utils.helpers import load_schema_doc
 
 logger = logging.getLogger(__name__)
 
-def get_query_expectations(user_question: str, session_id: str = "pre_analyst_default", trace_id: str = None) -> Dict[str, Any]:
+def get_query_expectations(user_question: str, session_id: str = "pre_analyst_default", trace_id: str = None, trace_name: str = "pre_analysis") -> Dict[str, Any]:
     
     schema_doc  = load_schema_doc()
     variables   = {"schema_doc": schema_doc, "question": user_question}
-    response    = call_llm_with_tracking(prompt_name="iyp-pre-analyst", variables=variables, session_id=session_id, trace_id=trace_id, trace_name="pre_analysis", tags=["pre_analyst"], response_format="json")
-
+    response    = call_llm_with_tracking(prompt_name="iyp-pre-analyst", variables=variables, session_id=session_id, trace_id=trace_id, trace_name=trace_name, tags=["pre_analyst"], response_format="json")
     if response["success"]:
         try:
             content = json.loads(response["content"])

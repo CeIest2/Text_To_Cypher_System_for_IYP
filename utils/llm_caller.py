@@ -34,7 +34,8 @@ def _build_tracking_config(session_id: str, trace_name: str, tags: list, trace_i
     
     return {
         "callbacks": [CallbackHandler()],
-        "metadata": metadata
+        "metadata": metadata,
+        "run_name": trace_name
     }
 
 def call_llm_with_tracking(prompt_name: str, variables: Dict[str, Any], session_id: str, trace_name: str = "llm_call", tags: List[str] = [], model_name: str = "gemini-2.5-flash", temperature: float = 0.0, response_format: str = "text",trace_id: str = None) -> Dict[str, Any]:
@@ -42,6 +43,7 @@ def call_llm_with_tracking(prompt_name: str, variables: Dict[str, Any], session_
         prompt_template = _fetch_prompt_template(prompt_name)
         llm             = _initialize_llm(model_name, temperature, response_format) 
         tracking_config = _build_tracking_config(session_id, trace_name, tags, trace_id=trace_id)
+        tracking_config["run_name"] = trace_name
         chain           = prompt_template | llm | StrOutputParser()
 
     except Exception as e:

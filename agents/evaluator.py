@@ -13,38 +13,15 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def evaluate_cypher_result(
-    question: str, 
-    cypher: str, 
-    explanation: str, 
-    db_output: Any, 
-    session_id: str = "eval_session_default",
-    trace_id: str = None # Added trace_id support
-) -> Dict[str, Any]:
+def evaluate_cypher_result(question: str, cypher: str, explanation: str, db_output: Any, session_id: str = "eval_session_default",trace_id: str = None ) -> Dict[str, Any]:
     try:
         schema_doc = load_schema_doc()
     except Exception as e:
         return {"is_valid": False, "error_type": "SYSTEM", "analysis": f"Schema load failed: {e}"}
 
-    variables = {
-        "question": question,
-        "cypher": cypher,
-        "explanation": explanation,
-        "db_output": format_db_output(db_output),
-        "schema_doc": schema_doc
-    }
-
+    variables = {"question": question, "cypher": cypher, "explanation": explanation, "db_output": format_db_output(db_output), "schema_doc": schema_doc}
     logger.info(f"🔎 Evaluating query for question: '{question[:50]}...'")
-    
-    response = call_llm_with_tracking(
-        prompt_name="iyp-query-evaluator",
-        variables=variables,
-        session_id=session_id,
-        trace_id=trace_id, # Link to the same trace
-        trace_name="cypher_evaluation",
-        tags=["evaluator"],
-        response_format="json"
-    )
+    response = call_llm_with_tracking(prompt_name="iyp-query-evaluator", variables=variables, session_id=session_id, trace_id=trace_id, trace_name="cypher_evaluation", tags=["evaluator"], response_format="json")
 
     if not response["success"]:
         return {"is_valid": False, "error_type": "SYSTEM", "analysis": f"LLM error: {response['error_message']}"}
@@ -53,11 +30,9 @@ def evaluate_cypher_result(
         return json.loads(response["content"])
     except json.JSONDecodeError:
         return {"is_valid": False, "error_type": "SYSTEM", "analysis": "Invalid JSON response."}
+    
+
 if __name__ == "__main__":
-    """
-    FULL END-TO-END TEST: 
-    Generator -> Executor -> Evaluator
-    """
     print("\n" + "="*50)
     print("RUNNING FULL PIPELINE TEST (ENGLISH)")
     print("="*50)
@@ -65,7 +40,6 @@ if __name__ == "__main__":
     test_question = "What is the market share of Orange (AS 3215) in France?"
     session_id = "full_pipeline_test_001"
 
-    # --- STEP 1: GENERATION ---
     print(f"\n[1/3] GENERATING CYPHER...")
     gen_response = call_llm_with_tracking(
         prompt_name="iyp-cypher-generator",
@@ -79,7 +53,6 @@ if __name__ == "__main__":
         print(f"❌ Generation failed: {gen_response['error_message']}")
         exit(1)
 
-    # Parse the generator's JSON output (reasoning, cypher, explanation)
     gen_data = json.loads(gen_response["content"])
     generated_cypher = gen_data.get("cypher")
     generated_explanation = gen_data.get("explanation")

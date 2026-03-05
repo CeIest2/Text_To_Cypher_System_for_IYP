@@ -23,7 +23,6 @@ def _fetch_prompt_template(prompt_name: str) -> ChatPromptTemplate:
         raise
 
 def _initialize_llm(model_name: str, temperature: float, response_format: str = "text") -> ChatGoogleGenerativeAI:
-    # Correction de l'avertissement : on passe response_mime_type au constructeur
     response_mime_type = "application/json" if response_format.lower() == "json" else "text/plain"
     return ChatGoogleGenerativeAI(
         model=model_name, 
@@ -38,24 +37,14 @@ def _build_tracking_config(session_id: str, trace_name: str, tags: list, trace_i
         "langfuse_tags": tags,
     }
     if trace_id:
-        metadata["langfuse_trace_id"] = trace_id # LA CLÉ MAGIQUE
+        metadata["langfuse_trace_id"] = trace_id 
     
     return {
         "callbacks": [CallbackHandler()],
         "metadata": metadata
     }
 
-def call_llm_with_tracking(
-    prompt_name: str, 
-    variables: Dict[str, Any], 
-    session_id: str, 
-    trace_name: str = "llm_call", 
-    tags: List[str] = [], 
-    model_name: str = "gemini-2.5-flash", 
-    temperature: float = 0.0, 
-    response_format: str = "text",
-    trace_id: str = None # Paramètre ajouté
-) -> Dict[str, Any]:
+def call_llm_with_tracking(prompt_name: str, variables: Dict[str, Any], session_id: str, trace_name: str = "llm_call", tags: List[str] = [], model_name: str = "gemini-2.5-flash", temperature: float = 0.0, response_format: str = "text",trace_id: str = None) -> Dict[str, Any]:
     try:
         prompt_template = _fetch_prompt_template(prompt_name)
         llm             = _initialize_llm(model_name, temperature, response_format) 
@@ -70,9 +59,13 @@ def call_llm_with_tracking(
         logger.info(f"Appel LLM pour '{trace_name}'...")
         response_text = chain.invoke(variables, config=tracking_config)
         return {"success": True, "content": response_text.strip(), "error_message": None}
+    
     except Exception as e:
         logger.error(f"Échec de l'exécution LLM: {e}")
         return {"success": False, "content": None, "error_message": str(e)}
+    
+
+
 if __name__ == "__main__":
     import os
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")

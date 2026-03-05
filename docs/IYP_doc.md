@@ -16,10 +16,10 @@
   - `country_code` is **ALWAYS** ISO-2 String (e.g., `'FR'`, `'JP'`).
   - `af` (Address Family) is **ALWAYS** an Integer (`4` or `6`).
 
-- **Retrieving AS Names:** To get the human-readable name of an AS, you **must** traverse to the `Name` node:
+- **Retrieving AS Names (WARNING: ONE-TO-MANY):** An AS often has MULTIPLE `:Name` nodes. If you do a simple MATCH, you will create a Cartesian product and get duplicate rows. You **must** group by the AS first, and use `COLLECT()[0]` to extract a single readable name:
   ```cypher
-  MATCH (a:AS)-[:NAME]->(n:Name) RETURN n.name
-  ```
+  MATCH (a:AS)-[:NAME]->(n:Name) 
+  RETURN a.asn, COLLECT(n.name)[0] AS AS_Name
 
 ---
 
@@ -27,7 +27,7 @@
 
 | Node Type | Description & Primary Keys (PK) |
 |---|---|
-| `:AS` | Autonomous System. PK: `.asn` (Integer). Identifiers: `.org_name`, `.website`, `.irr_status`, `.is_public`, `.country_code`, `.created`. Classification: `.tags_0_name` to `.tags_5_name`, `.info_type`, `.info_scope`. Size: `.cone:numberAsns`, `.cone:numberAddresses`, `.cone:numberPrefixes`. Physical: `.ix_count`, `.fac_count`, `.net_count`. |
+| `:AS` | Autonomous System. PK: `.asn` (Integer). Identifiers: `.org_name`, `.website`, `.irr_status`, `.is_public`, `.country_code`, `.created`. Classification: `.tags_0_name` to `.tags_5_name`, `.info_type`, `.info_scope`. Physical: `.ix_count`, `.fac_count`, `.net_count`. *(Note: .cone properties are currently unavailable).* |
 | `:Country` | Economy/Country. PK: `.country_code` (ISO-2). Others: `.name`, `.alpha3`, `.region_continent`, `.subregion`. |
 | `:Prefix` | Generic type for IP prefixes. Properties: `.prefix`, `.af` (4 or 6). |
 | `:BGPPrefix` | Subtype of Prefix announced in BGP. PK: `.prefix`. Properties: `.af` (4 or 6), `.roa_status`, `.rpki_status` (`'VALID'`, `'INVALID'`, `'NOT_FOUND'`), `.irr_status`. |
@@ -59,6 +59,11 @@
 - **Meaning:** Percentage of country population served by this AS. Used as a **proxy for Market Share**.
 
 ---
+
+### IP Prefixes & Routing
+- **Pattern:** `(:AS)-[:ORIGINATE]-(:Prefix)`
+- **Meaning:** Connects an Autonomous System to the IP prefixes it announces. 
+- 🚨 **CRITICAL RULE:** To count prefixes, ALWAYS use this undirected relationship. DO NOT use directional arrows (`->`) as it may return empty results. DO NOT use `:ROUTE_ORIGIN_AUTHORIZATION` to count general prefixes.
 
 ### IHR — Inter-Dependency & Resilience
 

@@ -92,6 +92,7 @@ def run_autonomous_loop(question: str, max_retries: int = 5):
 
 
 if __name__ == "__main__":
-    q = "Quels sont les noms des 5 entreprises au Royaume-Uni qui ont la plus grosse part de marché, mais qui gèrent aussi plus de 1 préfixes IP ?"
+    q = "Quel est l'AS le plus 'dangereux' ou le plus 'censuré' en Russie (RU) et en Iran (IR) ?"
+    # Quels sont les opérateurs télécoms africains qui dépendent le plus de l'infrastructure de Google ou d'Amazon pour accéder à Internet ?
     result = run_autonomous_loop(q)
     print("\nFinal Result:", json.dumps(result, indent=2))

@@ -3,7 +3,7 @@ import uuid
 from langfuse import Langfuse
 from agents.request_generator import generate_cypher_query
 from agents.evaluator import evaluate_cypher_result
-from DataBase.IYP_connector import test_cypher_on_iyp
+from DataBase.IYP_connector import test_cypher_on_iyp_traced
 
 # Initialisation du client Langfuse (v3)
 langfuse = Langfuse()
@@ -40,7 +40,7 @@ def run_full_agent_test(question: str):
 
         # --- STEP 2: EXECUTION ---
         print(f"\n[2/3] EXECUTING ON IYP DATABASE...")
-        db_result = test_cypher_on_iyp(gen_result["cypher"])
+        db_result = test_cypher_on_iyp_traced(gen_result["cypher"])
 
         # --- STEP 3: EVALUATION ---
         eval_verdict = evaluate_cypher_result(

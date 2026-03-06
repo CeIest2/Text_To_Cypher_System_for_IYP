@@ -3,16 +3,17 @@ from langfuse import Langfuse
 from agents.pre_analyst import get_query_expectations 
 from agents.request_generator import generate_cypher_query
 from agents.evaluator import evaluate_cypher_result
-from DataBase.IYP_connector import test_cypher_on_iyp
+from DataBase.IYP_connector import test_cypher_on_iyp_traced
 from agents.investigator import run_investigation 
 langfuse = Langfuse()
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-def run_autonomous_loop(question: str, max_retries: int = 5):
+def run_autonomous_loop(question: str, max_retries: int = 9):
     run_id = uuid.uuid4().hex
     session_id = f"session_{uuid.uuid4().hex[:8]}"
     history = "No previous attempts."
+    history_log = []
     
     with langfuse.start_as_current_observation(name="Autonomous_Cypher_Pipeline", as_type="span", trace_context={"trace_id": run_id, "session_id": session_id}, input={"question": question}) as main_span:
 
@@ -25,7 +26,7 @@ def run_autonomous_loop(question: str, max_retries: int = 5):
             current_attempt = attempt + 1
             attempt_prefix = f"[Attempt {current_attempt}]"
             print(f"\n--- 🔄 ATTEMPT {current_attempt}/{max_retries} ---")
-
+    
             gen_result = generate_cypher_query(question, session_id=session_id, trace_id=run_id, previous_history=history, trace_name=f"{attempt_prefix} Cypher Generation")
             
             if not gen_result["success"]:
@@ -34,7 +35,7 @@ def run_autonomous_loop(question: str, max_retries: int = 5):
 
             cypher       = gen_result["cypher"]
             explanation  = gen_result["explanation"]
-            db_result    = test_cypher_on_iyp(cypher)
+            db_result    = test_cypher_on_iyp_traced(cypher)
             eval_verdict = evaluate_cypher_result(question=question, cypher=cypher, explanation=explanation, db_output=db_result, session_id=session_id, trace_id=run_id, oracle_expectations=oracle_expectations, trace_name=f"{attempt_prefix} Evaluation")
 
             if eval_verdict.get("is_valid"):
@@ -62,15 +63,20 @@ def run_autonomous_loop(question: str, max_retries: int = 5):
                     queries_tested_str = "  Aucun test effectué.\n"
 
                 attempt_summary = (
-                    f"\n[TENTATIVE {current_attempt}]\n"
-                    f"- REQUÊTE TENTÉE : {cypher}\n"
-                    f"- REJET DE L'ÉVALUATEUR : [{error_type}] {analysis}\n"
-                    f"- TESTS DÉJÀ EFFECTUÉS PAR L'ENQUÊTEUR :\n{queries_tested_str}"
-                    f"- CONCLUSION DE L'ENQUÊTE {current_attempt} : {investigation_report}\n"
-                )
+                                f"\n--- ATTEMPT {current_attempt} ---\n"
+                                f"FAILED QUERY: {cypher}\n"
+                                f"EVALUATOR REJECTION: [{error_type}] {analysis}\n"
+                                f"INVESTIGATOR FACTUAL REPORT: {investigation_report}\n"
+                            )
                 
                 if history == "No previous attempts.":
                     history = attempt_summary
+                    history_log.append({
+                "attempt": current_attempt,
+                "cypher_tried": cypher,
+                "evaluator_error": error_type,
+                "investigator_facts": investigation_report
+            })
                 else:
                     history += attempt_summary
 
@@ -92,7 +98,7 @@ def run_autonomous_loop(question: str, max_retries: int = 5):
 
 
 if __name__ == "__main__":
-    q = "Quel est l'AS le plus 'dangereux' ou le plus 'censuré' en Russie (RU) et en Iran (IR) ?"
+    q = " Quels sont les fournisseurs d'accès étrangers qui ont les plus grandes parts de marché en france ? " 
     # Quels sont les opérateurs télécoms africains qui dépendent le plus de l'infrastructure de Google ou d'Amazon pour accéder à Internet ?
     result = run_autonomous_loop(q)
     print("\nFinal Result:", json.dumps(result, indent=2))

@@ -40,3 +40,17 @@ def save_json_debug(data: dict, filename: str):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     logger.info(f"Trace de débogage sauvegardée dans {path}")
+
+
+
+def parse_llm_json(raw_content: str) -> dict:
+    if not raw_content:
+        raise ValueError("LLM response content is empty.")
+        
+    cleaned_content = raw_content.strip()
+    
+    if cleaned_content.startswith("```json"): cleaned_content = cleaned_content[7:]
+    elif cleaned_content.startswith("```"):   cleaned_content = cleaned_content[3:]
+    if cleaned_content.endswith("```"):       cleaned_content = cleaned_content[:-3]
+    cleaned_content = cleaned_content.strip()
+    return json.loads(cleaned_content)

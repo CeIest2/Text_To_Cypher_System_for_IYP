@@ -2,7 +2,7 @@ import json,logging,os
 from typing import Dict, Any
 from utils.llm_caller import call_llm_with_tracking
 from utils.helpers import load_schema_doc, format_db_output
-from DataBase.IYP_connector import test_cypher_on_iyp
+from DataBase.IYP_connector import test_cypher_on_iyp_traced
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -55,6 +55,7 @@ if __name__ == "__main__":
         variables={"schema_doc": load_schema_doc(), "question": test_question},
         session_id=session_id,
         trace_name="test_generation",
+        model_name="gemini-2.5-flash",
         response_format="json"
     )
 
@@ -70,7 +71,7 @@ if __name__ == "__main__":
 
     # --- STEP 2: EXECUTION ---
     print(f"\n[2/3] EXECUTING ON IYP DATABASE...")
-    db_result = test_cypher_on_iyp(generated_cypher)
+    db_result = test_cypher_on_iyp_traced(generated_cypher)
 
     if db_result["success"]:
         print(f"✅ DB Success: Found {len(db_result['data'])} records.")

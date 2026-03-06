@@ -1,7 +1,7 @@
 import json,logging
 from typing import Dict, Any
 from utils.llm_caller import call_llm_with_tracking
-from utils.helpers import load_schema_doc
+from utils.helpers import load_schema_doc, parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -12,9 +12,9 @@ def generate_cypher_query(user_question: str, session_id: str = "gen_session_def
     response    = call_llm_with_tracking(prompt_name="iyp-cypher-generator", variables=variables, session_id=session_id, trace_id=trace_id, trace_name=trace_name, tags=["generator"], response_format="json" )
     if response["success"]:
         try:
-            content = json.loads(response["content"])
+            content = parse_llm_json(response["content"])
             return {"success": True,"reasoning": content.get("reasoning"),"cypher": content.get("cypher"),"explanation": content.get("explanation")}
-        except json.JSONDecodeError:
+        except ValueError:
             logger.error("LLM output could not be parsed as JSON.")
             return {"success": False, "error_message": "LLM output format error: expected valid JSON."}
     

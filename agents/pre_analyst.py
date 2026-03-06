@@ -1,7 +1,7 @@
 import json, logging
 from typing import Dict, Any
 from utils.llm_caller import call_llm_with_tracking
-from utils.helpers import load_schema_doc
+from utils.helpers import load_schema_doc, parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -9,12 +9,12 @@ def get_query_expectations(user_question: str, session_id: str = "pre_analyst_de
     
     schema_doc  = load_schema_doc()
     variables   = {"schema_doc": schema_doc, "question": user_question}
-    response    = call_llm_with_tracking(prompt_name="iyp-pre-analyst", variables=variables, session_id=session_id, trace_id=trace_id, trace_name=trace_name, tags=["pre_analyst"], response_format="json")
+    response    = call_llm_with_tracking(prompt_name="iyp-pre-analyst", variables=variables, session_id=session_id, model_name="gemini-2.5-flash", trace_id=trace_id, trace_name=trace_name, tags=["pre_analyst"], response_format="json")
     if response["success"]:
         try:
-            content = json.loads(response["content"])
+            content = parse_llm_json(response["content"])
             return {"success": True, "real_world_context": content.get("real_world_context"), "expected_data_type": content.get("expected_data_type"), "is_empty_result_plausible": content.get("is_empty_result_plausible"),"rejection_conditions": content.get("rejection_conditions")}
-        except json.JSONDecodeError:
+        except ValueError:
             logger.error("LLM output could not be parsed as JSON.")
             return {"success": False, "error_message": "LLM output format error: expected valid JSON."}
     

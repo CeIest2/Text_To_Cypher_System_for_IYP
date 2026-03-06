@@ -1,5 +1,6 @@
 import os
 import json
+import langfuse
 from neo4j import GraphDatabase
 from neo4j.exceptions import Neo4jError
 from dotenv import load_dotenv
@@ -9,6 +10,11 @@ load_dotenv()
 IYP_URI      = os.getenv("IYP_URI")
 IYP_USER     = os.getenv("IYP_USER")
 IYP_PASSWORD = os.getenv("IYP_PASSWORD")
+
+
+@langfuse.observe(as_type="span", name="Neo4j_Execution")
+def test_cypher_on_iyp_traced(cypher):
+    return test_cypher_on_iyp(cypher)
 
 def test_cypher_on_iyp(query: str, parameters: dict = None) -> dict:
 

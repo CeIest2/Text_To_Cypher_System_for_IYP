@@ -28,6 +28,8 @@
 | Node Type | Description & Primary Keys (PK) |
 |---|---|
 | `:AS` | Autonomous System. PK: `.asn` (Integer). Identifiers: `.org_name`, `.website`, `.irr_status`, `.is_public`, `.country_code`, `.created`. Classification: `.tags_0_name` to `.tags_5_name`, `.info_type`, `.info_scope`. Physical: `.ix_count`, `.fac_count`, `.net_count`. *(Note: .cone properties are currently unavailable).* |
+WARNING: The property .country_code on the AS node is often NULL. To find the registration country of an AS, you MUST traverse the relationship: (a:AS)-[:COUNTRY]-
+An AS operates in multiple countries. To find its true Home/Registration Country, you MUST use the NRO relationship: (a:AS)-[:COUNTRY {reference_org: 'NRO'}]-(c:Country)(c:Country)
 | `:Country` | Economy/Country. PK: `.country_code` (ISO-2). Others: `.name`, `.alpha3`, `.region_continent`, `.subregion`. |
 | `:Prefix` | Generic type for IP prefixes. Properties: `.prefix`, `.af` (4 or 6). |
 | `:BGPPrefix` | Subtype of Prefix announced in BGP. PK: `.prefix`. Properties: `.af` (4 or 6), `.roa_status`, `.rpki_status` (`'VALID'`, `'INVALID'`, `'NOT_FOUND'`), `.irr_status`. |

@@ -1,7 +1,7 @@
 import json, logging
 from typing import Dict, Any
 from utils.llm_caller import call_llm_with_tracking
-from DataBase.IYP_connector import test_cypher_on_iyp
+from DataBase.IYP_connector import test_cypher_on_iyp_traced
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def run_investigation(question: str, failed_cypher: str, error_message: str, ses
     test_results_summary = []
     for i, q in enumerate(test_queries[:3]):
         logger.info(f"🕵️‍♂️ Executing test {i+1}: {q}")
-        db_res = test_cypher_on_iyp(q)
+        db_res = test_cypher_on_iyp_traced(q)
         
         if db_res.get("success"):
             data_str = json.dumps(db_res.get('data'), ensure_ascii=False, default=str)[:500]

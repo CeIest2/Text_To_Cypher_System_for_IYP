@@ -1,5 +1,6 @@
 import logging, uuid, json
 from langfuse import Langfuse
+from utils.helpers import truncate_deep_lists
 from agents.pre_analyst import get_query_expectations 
 from agents.request_generator import generate_cypher_query
 from agents.evaluator import evaluate_cypher_result
@@ -13,11 +14,18 @@ logger = logging.getLogger(__name__)
 
 def resolve_query_with_retries(target_question: str, context_data: dict, oracle_expectations: dict, session_id: str, run_id: str, max_retries: int):
     history = "No previous attempts."
-
+    last_cypher = None
+    last_data = [] 
+    MAX_ROWS_FOR_CONTEXT = 50 
+    
     prompt_question = target_question
     if context_data:
-        prompt_question += f"\n\n[INFO CRITIQUE : Voici les données exactes trouvées lors des étapes précédentes dans la base. Utilise-les pour ta requête.]\n{json.dumps(context_data, indent=2)}"
-
+        prompt_question += (
+            f"\n\n[INFO CRITIQUE : Voici le résumé des étapes précédentes de notre réflexion.\n"
+            f"INTERDICTION FORMELLE : Ne crée JAMAIS de listes géantes avec IN [...] contenant des dizaines d'IDs.\n"
+            f"À la place, réutilise la logique de la requête 'cypher_precedent' pour construire une seule requête Cypher unifiée (par exemple en utilisant des sous-requêtes, des clauses WITH, ou en prolongeant le MATCH).]\n"
+            f"{json.dumps(context_data, indent=2)}"
+            )
     for attempt in range(max_retries):
         current_attempt = attempt + 1
         attempt_prefix = f"[Attempt {current_attempt}]"
@@ -31,15 +39,18 @@ def resolve_query_with_retries(target_question: str, context_data: dict, oracle_
 
         cypher       = gen_result["cypher"]
         explanation  = gen_result["explanation"]
+        
         db_result    = test_cypher_on_iyp_traced(cypher)
-
+        last_cypher  = cypher
+        last_data    = db_result.get('data', [])
+        safe_data    = truncate_deep_lists(last_data, max_items=10)
         sample_limit = 20 
-        is_truncated = len(db_result.get('data', [])) > sample_limit
+        is_truncated = len(safe_data) > sample_limit
         
         db_output_for_llm = {
             "success": db_result["success"],
-            "data": db_result.get('data', [])[:sample_limit] if db_result["success"] else [],
-            "row_count": len(db_result.get('data', [])),
+            "data": safe_data if db_result["success"] else [],
+            "row_count": len(last_data),
             "is_truncated": is_truncated,
             "error_message": db_result.get("error_message")
         }
@@ -48,7 +59,16 @@ def resolve_query_with_retries(target_question: str, context_data: dict, oracle_
 
         if eval_verdict.get("is_valid"):
             print(f"✅ SUCCESS at attempt {current_attempt}!")
-            return {"status": "SUCCESS", "iterations": current_attempt, "cypher": cypher, "data": db_result.get("data")}
+            final_data = last_data[:MAX_ROWS_FOR_CONTEXT]
+            if len(last_data) > MAX_ROWS_FOR_CONTEXT:
+                print(f"✂️ Données tronquées de {len(last_data)} à {MAX_ROWS_FOR_CONTEXT} lignes pour le LLM.")
+                
+            return {
+                "status": "SUCCESS", 
+                "iterations": current_attempt, 
+                "cypher": cypher, 
+                "data": final_data 
+            }
         
         else:
             error_type = eval_verdict.get('error_type')
@@ -74,7 +94,13 @@ def resolve_query_with_retries(target_question: str, context_data: dict, oracle_
                     history += attempt_summary
 
     print(f"❌ Failed to generate a valid query after {max_retries} attempts.")
-    return {"status": "FAILED", "iterations": max_retries, "data": None}
+    
+    return {
+        "status": "FAILED", 
+        "iterations": max_retries,
+        "cypher": last_cypher, 
+        "data": last_data[:MAX_ROWS_FOR_CONTEXT] if last_data else [] 
+    }
 
 
 
@@ -108,7 +134,12 @@ def run_autonomous_loop(question: str, max_retries: int = 9,session_id: str = No
                 step_result = resolve_query_with_retries(target_question=intent, context_data=context_data, oracle_expectations=oracle_expectations, session_id=session_id, run_id=run_id, max_retries=8)
 
                 if step_result["status"] == "SUCCESS":
-                    context_data[f"Resultat_Etape_{step_num}"] = step_result["data"]
+                    context_data[f"Etape_{step_num}"] = {
+                        "intention": intent,
+                        "cypher_precedent": step_result["cypher"],
+                        "echantillon_donnees": step_result["data"][:8] if step_result["data"] else [], 
+                        "nombre_total_resultats": len(step_result["data"]) if step_result["data"] else 0
+                    }
                 else:
                     print(f"❌ Échec de l'étape {step_num}. Impossible de continuer l'enquête.")
                     main_span.update(level="ERROR", status_message=f"Échec à l'étape {step_num}")

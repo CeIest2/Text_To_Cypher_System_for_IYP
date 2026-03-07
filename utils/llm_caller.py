@@ -24,7 +24,7 @@ def _fetch_prompt_template(prompt_name: str) -> ChatPromptTemplate:
 
 def _initialize_llm(model_name: str, temperature: float, response_format: str = "text") -> ChatGoogleGenerativeAI:
     response_mime_type = "application/json" if response_format.lower() == "json" else "text/plain"
-    return ChatGoogleGenerativeAI(model=model_name, temperature=temperature, google_api_key=os.getenv("GOOGLE_API_KEY"),response_mime_type=response_mime_type)
+    return ChatGoogleGenerativeAI(model=model_name, temperature=temperature, google_api_key=os.getenv("GOOGLE_API_KEY"),response_mime_type=response_mime_type,max_output_tokens=900)
 
 
 def _build_tracking_config(session_id: str, trace_name: str, tags: list, trace_id: str = None) -> dict:
@@ -38,7 +38,7 @@ def _build_tracking_config(session_id: str, trace_name: str, tags: list, trace_i
         "run_name": trace_name
     }
 
-def call_llm_with_tracking(prompt_name: str, variables: Dict[str, Any], session_id: str, trace_name: str = "llm_call", tags: List[str] = [], model_name: str = "gemini-2.5-flash-lite", temperature: float = 0.0, response_format: str = "text",trace_id: str = None) -> Dict[str, Any]:
+def call_llm_with_tracking(prompt_name: str, variables: Dict[str, Any], session_id: str, trace_name: str = "llm_call", tags: List[str] = [], model_name: str = "gemini-2.5-flash-lite", temperature: float = 0.05, response_format: str = "text",trace_id: str = None) -> Dict[str, Any]:
     try:
         prompt_template = _fetch_prompt_template(prompt_name)
         llm             = _initialize_llm(model_name, temperature, response_format) 

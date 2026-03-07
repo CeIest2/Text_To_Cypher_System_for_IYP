@@ -60,13 +60,20 @@ An AS operates in multiple countries. To find its true Home/Registration Country
 - ✅ **KEY:** `r.percent` *(Float)*
 - **Meaning:** Percentage of country population served by this AS. Used as a **proxy for Market Share**.
 
+### Rankings (Tranco, Cisco Umbrella, CAIDA, IHR...)
+- **Abstract Pattern:** `(entity)-[r:RANK]->(:Ranking)`
+- **Meaning:** Connects a measured entity (`:DomainName`, `:HostName`, `:AS`, or `:Country`) to its specific ranking.
+- ✅ **KEY:** `r.rank` *(Integer)* gives the exact position/rank.
+- 🚨 **CRITICAL RULE:** The relationship is ALWAYS directed **TOWARDS** the `:Ranking` node (e.g., `(d:DomainName)-[:RANK]->(r:Ranking)`). NEVER reverse the arrow (`<-[:RANK]-`). You must traverse this relationship rather than searching for an isolated `.rank` property directly on the entity nodes.
+
 ---
 
 ### IP Prefixes & Routing
 - **Pattern:** `(:AS)-[:ORIGINATE]-(:Prefix)`
 - **Meaning:** Connects an Autonomous System to the IP prefixes it announces. 
-- 🚨 **CRITICAL RULE:** To count prefixes, ALWAYS use this undirected relationship. DO NOT use directional arrows (`->`) as it may return empty results. DO NOT use `:ROUTE_ORIGIN_AUTHORIZATION` to count general prefixes.
-
+- 🚨 **CRITICAL RULE:** To count prefixes, ALWAYS use this undirected relationship. DO NOT use directional arrows (`->`).
+- **Identifier Pattern:** `(:Prefix)-[:AVAILABLE]->(:OpaqueID)`
+- 🚨 **CRITICAL RULE:** A `Prefix` is DIRECTLY connected to an `OpaqueID` via the `[:AVAILABLE]` relationship. Do NOT pass through an `:AS` node to find the OpaqueID of a prefix.
 ### IHR — Inter-Dependency & Resilience
 
 - **Pattern:** `(:AS)-[d:DEPENDS_ON]->(:AS)`
@@ -135,10 +142,10 @@ An AS operates in multiple countries. To find its true Home/Registration Country
 ---
 
 ### Performance Metrics — RIPE Atlas / M-Lab
-
 - Nodes: Checked directly on `:AS` or `:Country` nodes.
 - ✅ **KEYS:** `.avg_rtt` (Latency), `.packet_loss` (if available)
-
+- **Atlas Topology:** `(:AtlasMeasurement)-[:TARGET]->(n)`
+- 🚨 **CRITICAL RULE:** An `AtlasMeasurement` points to its specific target (which can be an `:AS`, an `:IP`, or a `:HostName`) STRICTLY via the `[:TARGET]` relationship (singular). Do NOT invent or guess relationships like `[:TARGETS]`, `[:PROBE]`, or `[:ASSIGNED]`.
 ---
 
 ## 4. REFERENCE QUERY GALLERY

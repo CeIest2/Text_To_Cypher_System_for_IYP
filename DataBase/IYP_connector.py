@@ -23,14 +23,27 @@ def test_cypher_on_iyp(query: str, parameters: dict = None) -> dict:
     try:
         with GraphDatabase.driver(IYP_URI, auth=auth) as driver:
             driver.verify_connectivity()
-            records, summary, keys = driver.execute_query(query,  parameters_=parameters, routing_="r" ,timeout=200.0)
             
-            return {"success": True, "keys": keys, "data": [record.data() for record in records], "metadata": { "query_type": summary.query_type, "time_ms": summary.result_available_after}}
+            # CORRECTION ICI : utilisation de "r" pour le mode lecture (read)
+            records, summary, keys = driver.execute_query(
+                query,
+                parameters_=parameters,
+                routing_="r", 
+                database_="neo4j", 
+                transaction_config={"timeout": 180.0} 
+            )
+            
+            return {
+                "success": True, 
+                "keys": keys, 
+                "data": [record.data() for record in records], 
+                "metadata": { "query_type": summary.query_type, "time_ms": summary.result_available_after}
+            }
             
     except Neo4jError as e:
-        return {"success": False, "error_type": "Neo4jError","message": e.message, "code": e.code
-        }
+        return {"success": False, "error_type": "Neo4jError","message": e.message, "code": e.code}
     except Exception as e:
+        print(f"\n⚠️ ERREUR PYTHON DANS NEO4J CONNECTOR : {e}\n")
         return {"success": False, "error_type": "SystemError", "message": str(e)}
 
 if __name__ == "__main__":

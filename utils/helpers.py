@@ -3,8 +3,8 @@ import json
 import logging
 import re
 from typing import Any
+from agents.json_corrector import fix_malformed_json
 
-from CRGIYP.agents.json_corrector import fix_malformed_json
 logger = logging.getLogger(__name__)
 
 def get_project_root() -> str:
@@ -33,6 +33,21 @@ def format_db_output(data: Any) -> str:
             return str(data)
     
     return str(data)
+
+
+def truncate_deep_lists(data, max_items=10):
+    if isinstance(data, list):
+        if len(data) > max_items:
+            truncated = [truncate_deep_lists(item, max_items) for item in data[:max_items]]
+            truncated.append(f"... [TRONQUÉ : contient {len(data)} éléments au total]")
+            return truncated
+        else:
+            return [truncate_deep_lists(item, max_items) for item in data]
+    
+    elif isinstance(data, dict): return {key: truncate_deep_lists(value, max_items) for key, value in data.items()}
+    else: return data
+
+
 
 def save_json_debug(data: dict, filename: str):
     debug_dir = os.path.join(get_project_root(), "debug")

@@ -12,7 +12,7 @@ class CypherGeneration(BaseModel):
     cypher: str      = Field(description="The executable Cypher query.")
     explanation: str = Field(description="A detailed technical explanation of how the query works.")
 
-def generate_cypher_query(user_question: str, session_id: str = "gen_session_default", trace_id: str = None, previous_history: str = "No previous attempts.", trace_name: str = "cypher_generation") -> Dict[str, Any]:
+def generate_cypher_query(user_question: str, session_id: str = "gen_session_default", trace_id: str = None,model: str = "gemini-2.5-flash", previous_history: str = "No previous attempts.", trace_name: str = "cypher_generation") -> Dict[str, Any]:
 
     schema_doc = load_schema_doc()
     variables = {

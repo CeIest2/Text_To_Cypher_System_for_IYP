@@ -16,10 +16,8 @@
   - `country_code` is **ALWAYS** ISO-2 String (e.g., `'FR'`, `'JP'`).
   - `af` (Address Family) is **ALWAYS** an Integer (`4` or `6`).
 
-- **Retrieving AS Names (WARNING: ONE-TO-MANY):** An AS often has MULTIPLE `:Name` nodes. If you do a simple MATCH, you will create a Cartesian product and get duplicate rows. You **must** group by the AS first, and use `COLLECT()[0]` to extract a single readable name:
-  ```cypher
-  MATCH (a:AS)-[:NAME]->(n:Name) 
-  RETURN a.asn, COLLECT(n.name)[0] AS AS_Name
+- **Retrieving ONE Descriptive Name (e.g., AS Name):** If you need to attach a single descriptive name to a node to avoid Cartesian products, you MAY use `COLLECT(n.name)[0]`. 
+- 🚨 **PROHIBITED ANTI-PATTERN:** NEVER use `COLLECT(x)[0]` when the user asks for a LIST of distinct entities (e.g., "Top 1000 domain names", "All prefixes"). If the goal is to return multiple different items, use standard `WITH DISTINCT x` or `RETURN DISTINCT x`.
 
 ---
 
@@ -65,15 +63,18 @@ An AS operates in multiple countries. To find its true Home/Registration Country
 - **Abstract Pattern:** `(entity)-[r:RANK]->(:Ranking)`
 - **Meaning:** Connects a measured entity (`:DomainName`, `:HostName`, `:AS`, or `:Country`) to its specific ranking.
 - ✅ **KEY:** `r.rank` *(Integer)* gives the exact position/rank.
-- 🚨 **CRITICAL RULE:** The relationship is ALWAYS directed **TOWARDS** the `:Ranking` node (e.g., `(d:DomainName)-[:RANK]->(r:Ranking)`). NEVER reverse the arrow (`<-[:RANK]-`). You must traverse this relationship rather than searching for an isolated `.rank` property directly on the entity nodes.
-
----
+- 🚨 **CRITICAL RULE FOR RANKINGS (CUTOFFS):** The `name` property of a `:Ranking` node is strictly categorical. DO NOT invent ranking names based on the user's prompt (e.g., NEVER write `(:Ranking {name: 'Tranco top 50k'})`). 
+- **Available Ranking Names (Exact Strings):** You MUST use one of these exact strings: `['Tranco top 1M', 'Cisco Umbrella Top 1 million', 'CAIDA ASRank', 'IHR country ranking: Total AS (JP)', 'IHR country ranking: Total AS (IR)']`.
+- To filter for a "Top N" (e.g., top 100, top 50k), you MUST query the appropriate fixed Ranking name and apply the mathematical filter on the EDGE property `r.rank`.
+- *Generic Example:* If a user asks for the "Top 50 ASes in CAIDA", use: `MATCH (a:AS)-[r:RANK]->(:Ranking {name: 'CAIDA ASRank'}) WHERE r.rank <= 50 RETURN a`
 
 ### IP Prefixes & Routing
 - **Pattern:** `(:AS)-[:ORIGINATE]-(:Prefix)`
 - **Meaning:** Connects an Autonomous System to the IP prefixes it announces. 
 - 🚨 **CRITICAL RULE:** To count prefixes, ALWAYS use this undirected relationship. DO NOT use directional arrows (`->`).
 - **Identifier Pattern:** `(:Prefix)-[:AVAILABLE]->(:OpaqueID)`
+- **Pattern (Geographic Location of a Prefix):** `(:Prefix)-[:COUNTRY]->(:Country)`
+- 🚨 **CRITICAL RULE:** To find the country of a Prefix, ALWAYS use this direct relationship. DO NOT traverse through the originating `:AS` node, as an AS can announce prefixes in multiple countries.
 - 🚨 **CRITICAL RULE:** A `Prefix` is DIRECTLY connected to an `OpaqueID` via the `[:AVAILABLE]` relationship. Do NOT pass through an `:AS` node to find the OpaqueID of a prefix.
 ### IHR — Inter-Dependency & Resilience
 
@@ -131,6 +132,10 @@ An AS operates in multiple countries. To find its true Home/Registration Country
 - **Pattern:** `(:AS)-[:IMPLEMENT]->(:ManrsAction)`
 - Properties: `.name` or `.description` on the `ManrsAction` node.
 
+### DNS & Infrastructure Resolution
+- **Full Resolution Path:** `(:DomainName)-[:PART_OF]-(:HostName)-[:RESOLVES_TO]-(:IP)-[:PART_OF]-(:Prefix)-[:ORIGINATE]-(:AS)`
+- 🚨 **CRITICAL RULE:** A `DomainName` NEVER resolves directly to an `IP` or an `AS`. You MUST traverse the full path via `HostName` and `Prefix` to accurately map a domain to its hosting Autonomous System.
+
 ---
 
 ### PeeringDB — Physical Infrastructure
@@ -149,133 +154,150 @@ An AS operates in multiple countries. To find its true Home/Registration Country
 - 🚨 **CRITICAL RULE:** An `AtlasMeasurement` points to its specific target (which can be an `:AS`, an `:IP`, or a `:HostName`) STRICTLY via the `[:TARGET]` relationship (singular). Do NOT invent or guess relationships like `[:TARGETS]`, `[:PROBE]`, or `[:ASSIGNED]`.
 ---
 
-## 4. REFERENCE QUERY GALLERY
+# 📚 Reference Query Gallery — Pattern Examples
 
-### 4.1 Basic Lookups & Identifiers
+> **Note to the Agent:** These are **structural examples only**.
+> Adapt labels, relationship types, and target values based on the specific user request.
+> Never reuse hardcoded values (country codes, ASNs, domain names) verbatim — always map them from the user's intent.
 
-**Find Names for AS2497:**
+---
+
+## 4.1 · Basic Lookups & Identifiers
+
+**Find all names for a specific AS:**
 ```cypher
-MATCH p = (:AS {asn: 2497})--(:Name)
+MATCH p = (:AS {asn: 99999})--(:Name)
 RETURN p
 ```
 
-**All nodes related to a specific Prefix (8.8.8.0/24):**
+**All nodes related to a specific Prefix:**
 ```cypher
-MATCH p = (:Prefix {prefix: '8.8.8.0/24'})--()
+MATCH p = (:Prefix {prefix: '192.0.2.0/24'})--()
 RETURN p
 ```
 
-**Country code of an AS (via NRO delegated files):**
+**Country code of an AS via a specific reference source:**
 ```cypher
-MATCH p = (:AS {asn:2497})-[{reference_name: 'nro.delegated_stats'}]-(:Country)
+MATCH p = (:AS {asn: 12345})-[{reference_name: 'nro.delegated_stats'}]-(:Country)
 RETURN p
 ```
 
-**Number of ASes registered in a Country (Japan):**
+**Number of ASes registered in a Country:**
 ```cypher
-MATCH (a:AS)-[:COUNTRY {reference_org:'NRO'}]-(:Country {country_code:'JP'}) 
+MATCH (a:AS)-[:COUNTRY {reference_org:'NRO'}]-(:Country {country_code:'FR'})
 RETURN COUNT(DISTINCT a)
 ```
 
 ---
 
-### 4.2 Infrastructure, IXPs & Probes
+## 4.2 · Infrastructure, IXPs & Probes
 
-**Countries of IXPs where AS2497 is present:**
+**Countries of IXPs where a specific AS is present:**
 ```cypher
-MATCH p = (:AS {asn:2497})-[:MEMBER_OF]->(ix:IXP)--(:Country)
+MATCH p = (:AS {asn: 64512})-[:MEMBER_OF]->(ix:IXP)--(:Country)
 RETURN p
 ```
 
-**IXP membership for main ASes in a Country (Japan):**
+**IXP membership for the main ASes in a Country:**
 ```cypher
-MATCH (a)-[:COUNTRY {reference_org:'RIPE NCC'}]-(:Country {country_code:'JP'})
+MATCH (a)-[:COUNTRY {reference_org:'RIPE NCC'}]-(:Country {country_code:'BR'})
 MATCH (a:AS)-[ra:RANK {reference_name:"ihr.country_dependency"}]->(:Ranking)
 WHERE ra.rank <= 10
-OPTIONAL MATCH (a)-[m:MEMBER_OF]-(ix:IXP)-[:COUNTRY]-(:Country {country_code:'JP'})
+OPTIONAL MATCH (a)-[m:MEMBER_OF]-(ix:IXP)-[:COUNTRY]-(:Country {country_code:'BR'})
 RETURN a, m, ix
 ```
 
-**Active RIPE Atlas probes for top 5 ISPs in Japan:**
+**Active RIPE Atlas probes for the top 5 ISPs in a Country:**
 ```cypher
 MATCH (pb:AtlasProbe)-[:LOCATED_IN]-(a:AS)-[pop:POPULATION]-(c:Country)
-WHERE c.country_code = 'JP' AND pb.status_name = 'Connected' AND pop.rank <= 5
-RETURN pop.rank, a.asn, COLLECT(pb.id) AS probe_ids ORDER BY pop.rank
+WHERE c.country_code = 'CA'
+  AND pb.status_name = 'Connected'
+  AND pop.rank <= 5
+RETURN pop.rank, a.asn, COLLECT(pb.id) AS probe_ids
+ORDER BY pop.rank
 ```
 
 ---
 
-### 4.3 Topologies & Dependencies
+## 4.3 · Topologies & Dependencies
 
-**Main ASes in a Country (Japan):**
+**Main ASes in a Country (by IHR country dependency ranking):**
 ```cypher
-MATCH (a)-[:COUNTRY {reference_org:'RIPE NCC'}]-(:Country {country_code:'JP'})
-MATCH (a:AS)-[ra:RANK {reference_name:"ihr.country_dependency"}]->(r:Ranking)--(:Country {country_code:'JP'})
+MATCH (a)-[:COUNTRY {reference_org:'RIPE NCC'}]-(:Country {country_code:'DE'})
+MATCH (a:AS)-[ra:RANK {reference_name:"ihr.country_dependency"}]->(r:Ranking)--(:Country {country_code:'DE'})
 WHERE ra.rank < 10
 OPTIONAL MATCH (a)-[:NAME {reference_org:"BGP.Tools"}]-(n:Name)
-RETURN DISTINCT a.asn as ASN, n.name AS AS_Name, COLLECT(r.name) as Rankings 
+RETURN DISTINCT a.asn AS ASN,
+                n.name  AS AS_Name,
+                COLLECT(r.name) AS Rankings
 ORDER BY a.asn
 ```
 
-**Dependencies for main ASes in Japan (IHR Hegemony):**
+**Dependencies for main ASes in a Country (IHR Hegemony):**
 ```cypher
-MATCH (a)-[:COUNTRY {reference_org:'RIPE NCC'}]-(:Country {country_code:'JP'})
+MATCH (a)-[:COUNTRY {reference_org:'RIPE NCC'}]-(:Country {country_code:'DE'})
 MATCH (a:AS)-[ra:RANK {reference_name:"ihr.country_dependency"}]->(:Ranking)
 WHERE ra.rank < 10
 OPTIONAL MATCH (a)-[p:PEERS_WITH]-(b), (a)-[d:DEPENDS_ON]->(b)
-WHERE p.rel = 1 AND d.hege > 0.03 AND a<>b
+WHERE p.rel = 1
+  AND d.hege > 0.03
+  AND a <> b
 RETURN a, d, b
 ```
 
-**Topology for top ASes in Iran (Peer-to-Peer connections):**
+**Peer-to-peer topology for the top ASes in a Country:**
 ```cypher
-MATCH (a:AS)-[ra:RANK]->(:Ranking {name: 'IHR country ranking: Total AS (IR)'})<-[rb:RANK]-(b:AS)
-WHERE ra.rank < 20 AND rb.rank < 20
+MATCH (a:AS)-[ra:RANK]->(:Ranking {name: 'IHR country ranking: Total AS (ZA)'})<-[rb:RANK]-(b:AS)
+WHERE ra.rank < 20
+  AND rb.rank < 20
 MATCH q = (b)-[pw:PEERS_WITH {reference_name: 'bgpkit.as2rel_v4'}]-(a)
-WHERE pw.rel = 0 -- Peer-to-peer
+WHERE pw.rel = 0  -- Peer-to-peer relationship only
 RETURN q
 ```
 
 ---
 
-### 4.4 Domains, DNS & Traffic
+## 4.4 · Domains, DNS & Traffic
 
-**Most popular Domain Names in a Country (Japan):**
+**Most popular Domain Names queried from a Country:**
 ```cypher
 MATCH (:Ranking {name: 'Tranco top 1M'})-[ra:RANK]-(dn:DomainName)-[q:QUERIED_FROM]-(c:Country)
-WHERE q.value > 30 AND c.country_code = 'JP'
-RETURN dn.name as domain_name, ra.rank as rank, q.value as per_query_JP
+WHERE q.value > 30
+  AND c.country_code = 'IT'
+RETURN dn.name    AS domain_name,
+       ra.rank    AS rank,
+       q.value    AS per_query_IT
 ORDER BY rank
 ```
 
-**IP addresses, prefixes, and ASNs related to a domain (yahoo.co.jp):**
+**IP addresses, prefixes, and ASNs related to a specific domain:**
 ```cypher
-MATCH p = (dn:DomainName)-[:PART_OF]-(hn:HostName)-[:RESOLVES_TO]-(:IP)-[:PART_OF]-(:Prefix)-[:ORIGINATE {reference_org:'BGPKIT'}]-(a:AS)
-WHERE dn.name = 'yahoo.co.jp' AND dn.name = hn.name
+MATCH p = (dn:DomainName)-[:PART_OF]-(hn:HostName)
+            -[:RESOLVES_TO]-(:IP)
+            -[:PART_OF]-(:Prefix)
+            -[:ORIGINATE {reference_org:'BGPKIT'}]-(a:AS)
+WHERE dn.name = 'example.org'
+  AND dn.name = hn.name
 RETURN p
 ```
 
-**Number of ASes hosting authoritative name servers per domain:**
+**Number of ASes hosting authoritative name servers per domain in a Country:**
 ```cypher
 MATCH (:Ranking {name: 'Tranco top 1M'})-[ra:RANK]-(dn:DomainName)-[q:QUERIED_FROM]-(c:Country)
-WHERE q.value > 30 AND c.country_code = 'JP' AND ra.rank < 10000
-MATCH (dn:DomainName)-[:MANAGED_BY]-(:AuthoritativeNameServer)-[:RESOLVES_TO]-(:IP)-[:PART_OF]-(:Prefix)-[:ORIGINATE {reference_org:'BGPKIT'}]-(a:AS) 
-RETURN dn.name, count(DISTINCT a) AS nb_asn, COLLECT(distinct a.asn) ORDER BY nb_asn DESC
+WHERE q.value > 30
+  AND c.country_code = 'IT'
+  AND ra.rank < 10000
+MATCH (dn:DomainName)-[:MANAGED_BY]-(:AuthoritativeNameServer)
+        -[:RESOLVES_TO]-(:IP)
+        -[:PART_OF]-(:Prefix)
+        -[:ORIGINATE {reference_org:'BGPKIT'}]-(a:AS)
+RETURN dn.name,
+       COUNT(DISTINCT a)        AS nb_asn,
+       COLLECT(DISTINCT a.asn)
+ORDER BY nb_asn DESC
 ```
 
 ---
-
-### 4.5 BGP & Routing
-
-**List of IPs for RIPE RIS full feed peers (>800k prefixes):**
-```cypher
-MATCH (n:BGPCollector)-[p:PEERS_WITH]-(a:AS)
-WHERE n.project = 'riperis' AND p.num_v4_pfxs > 800000
-RETURN n.name, COUNT(DISTINCT p.ip) AS nb_full, COLLECT(DISTINCT p.ip) AS ips_full
-```
-
----
-
 ## 5. RECOGNIZED DATA SOURCES
 
 `APNIC` · `BGPKIT` · `BGP.Tools` · `CAIDA` · `Cisco` · `CitizenLab` · `Cloudflare` · `IHR` · `Georgia Tech` · `MANRS` · `NRO` · `OpenINTEL` · `PCH` · `PeeringDB` · `RIPE NCC` · `RouteViews` · `Stanford` · `Tranco`

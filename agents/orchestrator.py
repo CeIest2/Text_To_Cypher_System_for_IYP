@@ -92,7 +92,7 @@ def resolve_query_with_retries(target_question: str, context_data: dict, oracle_
     return {"status": "FAILED", "iterations": max_retries,"cypher": last_cypher, "data": last_data[:MAX_ROWS_FOR_CONTEXT] if last_data else [] }
 
 
-def run_autonomous_loop(question: str, max_retries: int = 9, session_id: str = None):
+def run_autonomous_loop(question: str, max_retries: int = 5, session_id: str = None):
     run_id = uuid.uuid4().hex
     if not session_id:  
         session_id = f"session_{uuid.uuid4().hex[:8]}"
@@ -162,6 +162,6 @@ def run_autonomous_loop(question: str, max_retries: int = 9, session_id: str = N
 
 
 if __name__ == "__main__":
-    q = "Find domain names for which at least 30 percent of the queries are made in japan. Return the domain name, domain name rank in Tranco, and the percentage of queries made in japan." 
+    q = "Get the japanese ASes that appear in the top 10 of IHR’s rankings in Japan. Then find the IXPs where these ASes are member of. Return the distinct ASNs and IXP name." 
     result = run_autonomous_loop(q)
     print("\nFinal Result:", json.dumps(result, indent=2))

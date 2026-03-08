@@ -1,14 +1,30 @@
-# 🧠 Neo4j Autonomous Cypher Agent
+# 🧠 Autonomous Cypher Agent
+### *for Neo4j · Internet Yellow Pages (IYP)*
 
-> *Translate natural language into precise Cypher queries — autonomously, accurately, and with memory.*
+> Translate natural language into precise Cypher queries —
+> autonomously, accurately, and with self-correcting capabilities.
+
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![Neo4j](https://img.shields.io/badge/Neo4j-Graph_DB-008CC1?style=flat-square&logo=neo4j&logoColor=white)](https://neo4j.com)
+[![Gemini](https://img.shields.io/badge/Google-Gemini_2.5_Flash-4285F4?style=flat-square&logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](./LICENSE)
+[![CypherEval](https://img.shields.io/badge/Benchmark-CypherEval-a855f7?style=flat-square)](https://codeberg.org/dimitrios/CypherEval)
+
+</div>
 
 ---
 
-## Overview
+## 📖 Overview
 
-The **Neo4j Autonomous Cypher Agent** is an advanced, self-correcting pipeline that bridges the gap between human language and graph database queries. Built on a **Plan-and-Solve architecture**, it dynamically explores live schemas, heals its own errors, and accumulates knowledge through an episodic memory graph.
+The **Autonomous Cypher Agent** is an advanced, self-healing pipeline designed to bridge the gap between human language and complex Graph Database (Neo4j) queries.
 
-Powered by **Google Gemini** and a **Dual-Database Architecture**, the agent keeps your target data environment strictly separated from its cognitive memory layer.
+Unlike standard Text-to-Cypher generators, this agent:
+- 🔍 **Dynamically explores schemas** before generating any query
+- 🧩 **Decomposes complex questions** into logical, sequential sub-tasks
+- 🧪 **Tests its own queries** against the live database
+- 🔧 **Auto-corrects errors** based on the database engine's feedback
+
+Powered by **Google Gemini** and a strict **Dual-Database Architecture**, it ensures that the target data environment (IYP — Internet Yellow Pages) is accessed securely in **read-only mode**.
 
 ---
 
@@ -16,112 +32,49 @@ Powered by **Google Gemini** and a **Dual-Database Architecture**, the agent kee
 
 | Feature | Description |
 |---|---|
-| 🎯 **Zero-Hallucination Generation** | Explores the live remote Neo4j schema before writing a single line of Cypher |
-| 🔧 **Self-Healing Execution** | Catches Neo4j engine errors and auto-corrects iteratively — no user intervention |
-| 🧩 **Episodic Graph Memory** | Stores successful queries in a local RAG database; learns from past successes |
-| 🗺️ **Plan-and-Solve Routing** | Decomposes complex questions into manageable, sequential sub-queries |
-| 🔒 **Strict Output Typing** | Pydantic + Gemini Structured Outputs for robust, fully typed data pipelines |
-| 🔭 **Full Observability** | Langfuse integration for tracing, token cost monitoring, and debug loops |
+| 🎯 **Zero-Hallucination** | Relies on strict schema documentation (`IYP_doc.md`) to prevent hallucinated nodes, relationships, or properties |
+| 🧩 **Plan-and-Solve Decomposition** | Breaks down complex queries into iterative sub-tasks based on [arXiv:2312.11242](https://arxiv.org/pdf/2312.11242) |
+| 🔧 **Self-Healing Execution** | Catches Neo4j syntax or logic errors and auto-corrects them iteratively via an autonomous *Investigator* agent |
+| 🧪 **Tested & Validated** | Rigorously evaluated using the open-source **[CypherEval](https://codeberg.org/dimitrios/CypherEval)** benchmark |
+| 🔒 **Strict Output Typing** | Uses **Pydantic** + Gemini Structured Outputs for robust, fully typed data pipelines |
+| 🔭 **Full Observability** | Native **Langfuse** integration for tracing reasoning steps, execution time, and token costs |
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ Multi-Agent Architecture
 
-The agent enforces a strict **Dual-Database separation**:
+The system's intelligence relies on five dynamically orchestrated specialized agents:
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    USER QUERY                       │
-└───────────────────────┬─────────────────────────────┘
-                        ▼
-          ┌─────────────────────────┐
-          │    Orchestrator         │
-          │      main.py            │
-          └──────┬──────────────────┘
-                 │
-    ┌────────────▼────────────────────────────────┐
-    │            6-Step Pipeline                  │
-    │                                             │
-    │  1. 🔍 Retrospector  ──► Local Memory DB    │
-    │  2. 📋 Planner       ──► Gemini LLM         │
-    │  3. 🗺️  Explorer      ──► Remote Target DB  │
-    │  4. ⚙️  Translator    ──► Gemini + Remote DB │
-    │  5. ✍️  Writer        ──► Gemini LLM         │
-    │  6. 💾 Archivist     ──► Local Memory DB    │
-    └─────────────────────────────────────────────┘
-
-  📡 Remote Target DB (IYP)        🧠 Local Memory DB (RAG)
-  ─────────────────────────        ──────────────────────────
-  • Read-only                      • Read / Write
-  • Schema exploration             • Episodic memory
-  • Data extraction                • Vector embeddings
+┌─────────────────────────────────────────────────────────────┐
+│                        USER QUERY                           │
+└──────────────────────────┬──────────────────────────────────┘
+                           ▼
+               ┌───────────────────────┐
+               │   Orchestrator Agent  │
+               └──────────┬────────────┘
+                          │
+    ┌─────────────────────▼───────────────────────────────┐
+    │  1. 🔍 Pre-Analysis   (Expectations & Context)      │
+    │  2. 🔀 Decomposition  (Plan-and-Solve)              │
+    │  3. 🔄 Autonomous Loop (per sub-question)           │
+    │     ├─ a. ⚙️  Generation   → Cypher query           │
+    │     ├─ b. 🛢️  Execution    → Neo4j                  │
+    │     ├─ c. ⚖️  Evaluation   → Success / Reject       │
+    │     └─ d. 🕵️  Investigation → Diagnostics if failed │
+    │  4. 📝 Final Synthesis                              │
+    └─────────────────────────────────────────────────────┘
 ```
 
----
+### Agent Descriptions
 
-## 🔄 The 6-Step Pipeline
-
-### 1 · 🔍 Memory Retrieval *(The Retrospector)*
-Queries the Local Memory DB for semantically similar past questions. If a match is found, previously successful Cypher queries and schema context are loaded directly — skipping redundant work.
-
-### 2 · 📋 Planning *(The Planner)*
-Uses Gemini to decompose the user's natural language input into logical, ordered sub-steps.
-
-### 3 · 🗺️ Schema Exploration *(The Explorer)*
-Queries the Remote Target DB metadata to validate that all required entities and relationships exist. Gracefully aborts if a concept is not found — preventing hallucinated queries.
-
-### 4 · ⚙️ Generation & Execution *(The Translator & Tester)*
-Generates Cypher using Gemini, runs it against the Remote Target DB, catches errors, and **iteratively refines** the code until it succeeds or exhausts retries.
-
-### 5 · ✍️ Synthesis *(The Writer)*
-Takes the original user question and the `extracted_data`, then uses Gemini to produce a human-readable `interpretation` — turning raw graph records into a clear, natural language answer.
-
-### 6 · 💾 Memorization *(The Archivist)*
-Returns the complete `FinalAnswer` to the caller and silently commits the successful reasoning steps, Cypher queries, and interpretation into the Local Memory DB for future retrieval.
-
----
-
-## 📦 Prerequisites & Installation
-
-### Requirements
-
-- **Python** 3.9+
-- **Remote Neo4j instance** — target database (read-only access)
-- **Local Neo4j instance** — agent memory database (read/write)
-- **Google Gemini API Key**
-- **Langfuse account** *(optional but recommended)*
-
-### Install
-
-```bash
-git clone https://github.com/your-org/cypher-agent.git
-cd cypher-agent
-pip install pydantic neo4j google-genai langfuse
-```
-
-### Configure Environment Variables
-
-Create a `.env` file at the project root:
-
-```env
-# ── LLM ──────────────────────────────────────────
-GOOGLE_API_KEY=AIzaSy...
-
-# ── Target Database (Remote / Read-Only) ─────────
-IYP_NEO4J_URI=neo4j+s://remote-server.com:7687
-IYP_NEO4J_USER=read_only_user
-IYP_NEO4J_PASSWORD=your_remote_password
-
-# ── Agent Memory Database (Local / Read-Write) ───
-RAG_NEO4J_URI=bolt://localhost:7687
-RAG_NEO4J_USER=neo4j
-RAG_NEO4J_PASSWORD=your_local_password
-
-# ── Observability ─────────────────────────────────
-LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_HOST=https://cloud.langfuse.com
-```
+| Agent | File | Role |
+|---|---|---|
+| 🔍 **Pre-Analyst** | `pre_analyst.py` | Analyzes user intent, establishes business context, determines if an empty result is plausible or an error |
+| 🔀 **Decomposer** | `decomposer.py` | Determines if the query requires multiple steps and generates a sequential execution plan *(Plan-and-Solve)* |
+| ⚙️ **Request Generator** | `request_generator.py` | Drafts the target Cypher query based on strict IYP schema rules |
+| ⚖️ **Evaluator** | `evaluator.py` | Analyzes raw Neo4j results to ensure they actually answer the initial question |
+| 🕵️ **Investigator** | `investigator.py` | Generates diagnostic mini-queries to understand failures before attempting a new generation |
 
 ---
 
@@ -130,83 +83,108 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 ```
 cypher_agent/
 │
-├── core/                       # Application core
-│   ├── models.py               # Pydantic schemas (strict typing)
-│   ├── llm.py                  # Gemini client configuration
-│   └── neo4j_clients.py        # Remote (IYP) + Local (RAG) DB connections
+├── agents/                      # Core Multi-Agent Logic
+│   ├── decomposer.py            # Plan-and-Solve Agent (arXiv:2312.11242)
+│   ├── evaluator.py             # DB feedback validation
+│   ├── investigator.py          # Hypothesis testing & diagnostics
+│   ├── orchestrator.py          # Main thinking loop & routing
+│   ├── pre_analyst.py           # Initial context extraction
+│   └── request_generator.py     # Cypher generation
 │
-├── pipeline/                   # Plan-and-Solve workflow
-│   ├── 1_retriever.py          # Checks Local Memory DB
-│   ├── 2_planner.py            # Decomposes questions (Gemini)
-│   ├── 3_explorer.py           # Validates schema on Remote Target DB
-│   ├── 4_generator.py          # Writes & fixes Cypher (Gemini + Remote DB)
-│   ├── 5_writer.py             # Synthesizes natural language interpretation (Gemini)
-│   └── 6_memorizer.py          # Saves success paths to Local Memory DB
+├── DataBase/
+│   └── IYP_connector.py         # Secure Neo4j driver (read-only)
 │
-└── main.py                     # Orchestrator — maps the pipeline
+├── docs/
+│   └── IYP_doc.md               # Static RAG: Schema & business rules
+│
+├── utils/
+│   ├── helpers.py               # Formatting & file loaders
+│   └── llm_caller.py            # Langchain/Gemini wrapper + Langfuse
+│
+├── run_benchmark.py             # CypherEval benchmark runner
+└── parallel_evaluator.py        # Semantic result validator
+```
+
+---
+
+## 📦 Prerequisites & Installation
+
+**Requirements:**
+- Python 3.9+
+- A running Neo4j instance (IYP database)
+- Google Gemini API Key *(optimized for `gemini-2.5-flash`)*
+- Langfuse account *(highly recommended for debugging and tracing)*
+
+### 1. Clone & Install
+
+```bash
+git clone https://github.com/your-org/cypher-agent.git
+cd cypher-agent
+
+pip install pydantic neo4j langchain-google-genai langfuse python-dotenv
+```
+
+### 2. Configure Environment Variables
+
+Create a `.env` file at the project root:
+
+```env
+# ── LLM ───────────────────────────────────────────
+GOOGLE_API_KEY=AIzaSy...
+
+# ── Target Database (IYP) ─────────────────────────
+IYP_URI=neo4j+s://your-iyp-server.com:7687
+IYP_USER=your_user
+IYP_PASSWORD=your_password
+
+# ── Observability (Langfuse) ──────────────────────
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_HOST=https://cloud.langfuse.com
 ```
 
 ---
 
 ## 🚀 Usage
 
+Run the **Orchestrator** to process any natural language question through the full pipeline:
+
 ```python
-from cypher_agent.main import process_natural_language_query
+import json
+from agents.orchestrator import run_autonomous_loop
 
-question = "What is the average broadband speed in Northern Europe?"
-response = process_natural_language_query(question)
+# Ask your question in natural language
+question = "What is the market share of AS 3215 in France?"
 
-if response.status == "SUCCESS":
-    print("Raw data:", response.extracted_data)
-    print("Answer:", response.interpretation)
+# Run the autonomous agent
+result = run_autonomous_loop(question)
+
+# Handle the result
+if result.get("status") == "SUCCESS":
+    print("✅ Final Cypher Query:\n", result["cypher"])
+    print("\n📊 Extracted Data:\n", json.dumps(result["data"], indent=2))
 else:
-    print("Agent could not find the data:", response.interpretation)
+    print(f"❌ Failed. Reason: {result.get('reason', 'Max retries reached.')}")
 ```
+
+The `run_autonomous_loop` function handles the **entire pipeline** automatically:
+Pre-analysis → Decomposition → Generation → Execution → Evaluation → Self-Correction → Synthesis.
 
 ---
 
-## 📤 Input / Output Specification
+## 🧪 Benchmark & Evaluation
 
-**Input:** A single natural language query *(context-independent)*
+The agent's robustness is tested against **[CypherEval](https://codeberg.org/dimitrios/CypherEval)**, a standardized dataset designed to evaluate LLMs' ability to generate Cypher queries.
 
-**Output:** A structured JSON object matching the `FinalAnswer` Pydantic model. It provides the execution status, the raw extracted data, the exact Cypher queries used, and a human-readable interpretation.
+The parallel benchmarking scripts (`run_benchmark.py` & `parallel_evaluator.py`) allow you to:
 
-```json
-{
-  "status": "SUCCESS",
-  "queries": [
-    "MATCH (c:Country {region: 'Asia'})-[:HAS_SCORE]->(s:CyberSecurityIndex) RETURN c.name, s.score ORDER BY s.score DESC LIMIT 2"
-  ],
-  "extracted_data": [
-    { "c.name": "Singapore", "s.score": 98.5 },
-    { "c.name": "Japan",     "s.score": 97.2 }
-  ],
-  "interpretation": "The top-performing Asian countries in cybersecurity are Singapore (98.5) and Japan (97.2)."
-}
-```
-
-**Possible statuses:**
-
-| Status | Meaning |
-|---|---|
-| `SUCCESS` | Data extracted and interpreted successfully |
-| `SCHEMA_NOT_FOUND` | Requested concept doesn't exist in the target DB |
-| `EXECUTION_FAILED` | Query failed after all auto-correction attempts |
-| `MEMORY_HIT` | Answered instantly from episodic memory |
-
----
-
-## 🔭 Observability with Langfuse
-
-When Langfuse credentials are configured, every agent run is fully traced:
-
-- **Execution steps** — see exactly which pipeline stage ran
-- **Gemini reasoning** — inspect prompts, completions, and chain-of-thought
-- **Token costs** — track usage per query and over time
-- **Auto-correction loops** — debug failed Cypher generation attempts
+- **Massively run** test prompts of varying difficulty *(Easy, Medium, Hard)*
+- **Semantically compare** the agent's output with CypherEval's canonical solutions
+- **Generate detailed JSON** performance reports
 
 ---
 
 ## 📄 License
 
-Distributed under the MIT License. See `LICENSE` for details.
+Distributed under the **MIT License**. See [`LICENSE`](./LICENSE) for details.
+

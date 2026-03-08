@@ -1,147 +1,195 @@
 import csv
-from datetime import datetime
 import json
 import time
 import uuid
 import os
 import threading
 import concurrent.futures
+import logging
+from datetime import datetime
+from typing import List, Dict, Optional, Any
+from pydantic import BaseModel, Field
+
 from agents.orchestrator import run_autonomous_loop
 
+# Configuration du logging
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 file_lock = threading.Lock()
 
-def process_single_test(index, row, benchmark_session_id, report_filename, results, detailed_logs):
-    """Fonction qui gère un seul test. Sera exécutée en parallèle par les threads."""
-    task_id          = row['Task ID']
-    difficulty       = row['Difficulty Level']
-    prompt           = row['Prompt']
-    canonical_cypher = row['Canonical Solution']
+# --- Modèles de données ---
+
+class TestDetail(BaseModel):
+    """Détails complets d'un test individuel."""
+    test_index: int
+    task_id: str
+    difficulty: str
+    prompt: str
+    status: str
+    failure_reason: Optional[str] = None
+    iterations_used: int
+    time_seconds: float
+    generated_cypher: str
+    canonical_cypher: str
+
+class DifficultyStats(BaseModel):
+    """Statistiques par niveau de difficulté."""
+    total: int = 0
+    success: int = 0
+    failed: int = 0
+
+class GlobalStats(BaseModel):
+    """Statistiques globales du benchmark."""
+    total: int = 0
+    success: int = 0
+    failed: int = 0
+
+class BenchmarkReport(BaseModel):
+    """Structure complète du rapport de benchmark."""
+    session_id: str
+    last_updated: str
+    stats_current_run: Dict[str, Any] = {"global": GlobalStats(), "by_difficulty": {}}
+    details: List[TestDetail] = []
+
+# --- Fonctions de traitement ---
+
+def process_single_test(index: int, row: Dict[str, str], report: BenchmarkReport, report_filename: str):
+    """Exécute un test unique et met à jour le rapport partagé."""
+    task_id          = row.get('Task ID', 'N/A')
+    difficulty       = row.get('Difficulty Level', 'Unknown')
+    prompt           = row.get('Prompt', '')
+    canonical_cypher = row.get('Canonical Solution', 'None')
     
-    print(f"\n[Thread] ⏳ Démarrage TEST {index + 1} | Task: {task_id} | Diff: {difficulty}")
+    logger.info(f"⏳ Starting TEST {index + 1} | Task: {task_id} | Diff: {difficulty}")
     
     start_time = time.time()
     failure_reason = None
     
     try:
-        agent_result = run_autonomous_loop(prompt, session_id=benchmark_session_id)
+        # Appel de l'orchestrateur (l'agent autonome)
+        agent_result = run_autonomous_loop(prompt, session_id=report.session_id)
         status       = agent_result.get("status", "FAILED")
         iterations   = agent_result.get("iterations", 0)
         final_cypher = agent_result.get("cypher", "None")
         
         if status == "FAILED":
-            if "reason" in agent_result:
-                failure_reason = agent_result["reason"]
-            elif iterations > 0:
-                failure_reason = f"Max retries reached ({iterations} essais épuisés)"
-            else:
-                failure_reason = "Échec inexpliqué renvoyé par l'orchestrateur"
-
+            failure_reason = agent_result.get("reason") or f"Max retries reached ({iterations} attempts)"
+            
     except Exception as e:
         status       = "FAILED"
         iterations   = 0
         final_cypher = "None"
-        failure_reason = f"Code Crash (Exception): {str(e)}"
+        failure_reason = f"System Crash: {str(e)}"
         
-    elapsed_time = time.time() - start_time
+    elapsed_time = round(time.time() - start_time, 2)
     
-    with file_lock:
-        if difficulty not in results["by_difficulty"]:
-            results["by_difficulty"][difficulty] = {"total": 0, "success": 0, "failed": 0}
+    # Création de l'objet de détail du test
+    detail = TestDetail(
+        test_index=index + 1,
+        task_id=task_id,
+        difficulty=difficulty,
+        prompt=prompt,
+        status=status,
+        failure_reason=failure_reason,
+        iterations_used=iterations,
+        time_seconds=elapsed_time,
+        generated_cypher=final_cypher,
+        canonical_cypher=canonical_cypher
+    )
 
-        results["global"]["total"] += 1
-        results["by_difficulty"][difficulty]["total"] += 1
+    # Mise à jour sécurisée des statistiques et sauvegarde
+    with file_lock:
+        # Initialisation de la difficulté si nouvelle
+        if difficulty not in report.stats_current_run["by_difficulty"]:
+            report.stats_current_run["by_difficulty"][difficulty] = DifficultyStats()
+
+        # Incrémentation des compteurs
+        report.stats_current_run["global"].total += 1
+        report.stats_current_run["by_difficulty"][difficulty].total += 1
         
         if status == "SUCCESS":
-            results["global"]["success"] += 1
-            results["by_difficulty"][difficulty]["success"] += 1
-            print(f"✅ [Test {index + 1}] SUCCÈS en {iterations} itérations ({elapsed_time:.2f}s)")
+            report.stats_current_run["global"].success += 1
+            report.stats_current_run["by_difficulty"][difficulty].success += 1
+            logger.info(f"✅ [Test {index + 1}] SUCCESS in {iterations} iterations ({elapsed_time}s)")
         else:
-            results["global"]["failed"] += 1
-            results["by_difficulty"][difficulty]["failed"] += 1
-            print(f"❌ [Test {index + 1}] ÉCHEC ({elapsed_time:.2f}s) ➔ Raison : {failure_reason}")
+            report.stats_current_run["global"].failed += 1
+            report.stats_current_run["by_difficulty"][difficulty].failed += 1
+            logger.warning(f"❌ [Test {index + 1}] FAILED ({elapsed_time}s) -> Reason: {failure_reason}")
         
-        current_success = results["global"]["success"]
-        current_total = results["global"]["total"]
-        current_rate = (current_success / current_total) * 100
-        print(f"📈 SCORE ACTUEL : {current_success}/{current_total} ({current_rate:.2f}%)")
+        # Ajout au log détaillé
+        report.details.append(detail)
+        report.last_updated = datetime.now().isoformat()
         
-        detailed_logs.append({
-            "test_index": index + 1,
-            "task_id": task_id,
-            "difficulty": difficulty,
-            "prompt": prompt,
-            "status": status,
-            "failure_reason": failure_reason,
-            "iterations_used": iterations,
-            "time_seconds": round(elapsed_time, 2),
-            "generated_cypher": final_cypher,
-            "canonical_cypher": canonical_cypher
-        })
-        
+        # Sauvegarde incrémentale
         with open(report_filename, "w", encoding="utf-8") as f:
-            json.dump({
-                "session_id": benchmark_session_id,
-                "last_updated": datetime.now().isoformat(),
-                "stats_current_run": results,
-                "details": detailed_logs
-            }, f, indent=4, ensure_ascii=False)
+            f.write(report.model_dump_json(indent=4))
+        
+        # Affichage du score en temps réel
+        g = report.stats_current_run["global"]
+        rate = (g.success / g.total) * 100
+        logger.info(f"📈 CURRENT SCORE: {g.success}/{g.total} ({rate:.2f}%)")
 
 
-
-def run_cyphereval_benchmark(csv_file_path: str, limit: int = None, start_at: int = 0, max_workers: int = 10):
-    results = {
-        "global": {"total": 0, "success": 0, "failed": 0},
-        "by_difficulty": {}
-    }
-    detailed_logs = []
+def run_cyphereval_benchmark(csv_file_path: str, limit: int = None, start_at: int = 0, max_workers: int = 5):
+    """Point d'entrée principal pour lancer le benchmark en parallèle."""
     
     date_str = datetime.now().strftime("%Y%m%d_%H%M")
     report_filename = f"benchmark_report_{date_str}.json"
-    benchmark_session_id = f"benchmark_cyphereval_{date_str}_{uuid.uuid4().hex[:4]}"
     
-    print(f"🚀 Démarrage du benchmark PARALLÈLE (x{max_workers} threads) sur {csv_file_path}...")
-    print(f"📝 Les résultats seront sauvegardés en temps réel dans : {report_filename}")
+    # Initialisation du rapport via Pydantic
+    report = BenchmarkReport(
+        session_id=f"benchmark_{date_str}_{uuid.uuid4().hex[:4]}",
+        last_updated=datetime.now().isoformat()
+    )
+    
+    logger.info(f"🚀 Starting PARALLEL benchmark (x{max_workers} threads) on {csv_file_path}")
     
     tasks_to_run = []
-    
-    with open(csv_file_path, mode='r', encoding='utf-8') as file:
-        reader = list(csv.DictReader(file))
-        for index, row in enumerate(reader):
-            if index < start_at:
-                continue
-            if limit and len(tasks_to_run) >= limit:
-                break
-            tasks_to_run.append((index, row))
-            
+    try:
+        with open(csv_file_path, mode='r', encoding='utf-8') as file:
+            reader = list(csv.DictReader(file))
+            for index, row in enumerate(reader):
+                if index < start_at:
+                    continue
+                if limit and len(tasks_to_run) >= limit:
+                    break
+                tasks_to_run.append((index, row))
+    except FileNotFoundError:
+        logger.error(f"CSV file not found: {csv_file_path}")
+        return
+
+    # Exécution parallèle
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
-            executor.submit(process_single_test, index, row, benchmark_session_id, report_filename, results, detailed_logs)
+            executor.submit(process_single_test, index, row, report, report_filename)
             for index, row in tasks_to_run
         ]
-        
         concurrent.futures.wait(futures)
 
+    # Résumé final
     print("\n" + "*"*50)
-    print("🏆 RÉSULTATS DU BENCHMARK (FINI) 🏆")
+    print("🏆 FINAL BENCHMARK RESULTS 🏆")
     print("*"*50)
     
-    if results["global"]["total"] > 0:
-        global_rate = (results["global"]["success"] / results["global"]["total"]) * 100
-        print(f"🌍 Taux de succès GLOBAL : {global_rate:.2f}% ({results['global']['success']}/{results['global']['total']})")
+    g = report.stats_current_run["global"]
+    if g.total > 0:
+        global_rate = (g.success / g.total) * 100
+        print(f"🌍 Global Success Rate: {global_rate:.2f}% ({g.success}/{g.total})")
         
-        print("\n📊 Détail par difficulté :")
-        for diff, stats in results["by_difficulty"].items():
-            if stats["total"] > 0:
-                rate = (stats["success"] / stats["total"]) * 100
-                print(f"  - {diff} : {rate:.2f}% ({stats['success']}/{stats['total']})")
+        print("\n📊 Detail by difficulty:")
+        for diff, stats in report.stats_current_run["by_difficulty"].items():
+            rate = (stats.success / stats.total) * 100
+            print(f"  - {diff} : {rate:.2f}% ({stats.success}/{stats.total})")
     else:
-        print("Aucun test n'a été exécuté.")
+        print("No tests were executed.")
 
-    with open("benchmark_report.json", "w", encoding="utf-8") as f:
-        json.dump(detailed_logs, f, indent=4)
+    # Sauvegarde finale du fichier consolidé
+    final_output = "benchmark_report_final.json"
+    with open(final_output, "w", encoding="utf-8") as f:
+        f.write(report.model_dump_json(indent=4))
         
-    print("\n📝 Un rapport détaillé a été sauvegardé dans 'benchmark_report.json'")
+    logger.info(f"📝 Final report saved in '{final_output}'")
 
 if __name__ == "__main__":
-    run_cyphereval_benchmark("variation-A.csv", limit=None, start_at=0, max_workers=5)
+    run_cyphereval_benchmark("variation-A.csv", limit=None, start_at=0, max_workers=20)

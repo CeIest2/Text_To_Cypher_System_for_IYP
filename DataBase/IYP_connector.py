@@ -24,7 +24,6 @@ def test_cypher_on_iyp(query: str, parameters: dict = None) -> dict:
         with GraphDatabase.driver(IYP_URI, auth=auth) as driver:
             driver.verify_connectivity()
             
-            # CORRECTION ICI : utilisation de "r" pour le mode lecture (read)
             records, summary, keys = driver.execute_query(
                 query,
                 parameters_=parameters,
@@ -45,6 +44,11 @@ def test_cypher_on_iyp(query: str, parameters: dict = None) -> dict:
     except Exception as e:
         print(f"\n⚠️ ERREUR PYTHON DANS NEO4J CONNECTOR : {e}\n")
         return {"success": False, "error_type": "SystemError", "message": str(e)}
+
+
+
+
+
 
 if __name__ == "__main__":
 

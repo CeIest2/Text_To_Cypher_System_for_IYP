@@ -1,5 +1,9 @@
-import json,logging,os
-from typing import Dict, Any
+import json
+import logging
+import os
+from typing import Dict, Any, Optional, Literal
+from pydantic import BaseModel, Field
+
 from utils.llm_caller import call_llm_with_tracking
 from utils.helpers import load_schema_doc, format_db_output
 from DataBase.IYP_connector import test_cypher_on_iyp_traced
@@ -7,6 +11,11 @@ from DataBase.IYP_connector import test_cypher_on_iyp_traced
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+class QueryEvaluation(BaseModel):
+    is_valid: bool                 = Field(description="True if the generated Cypher query accurately and safely solved the user's problem based purely on the database output.")
+    analysis: str                  = Field(description="A detailed analysis in English justifying your decision based on the output data.")
+    correction_hint: Optional[str] = Field(default=None, description="Specific instructions to fix the query (or null if valid).")
+    error_type: Literal["SYNTAX", "HALLUCINATION", "LOGIC", "EMPTY_BUT_SUSPICIOUS", "ORACLE_REJECTION", "NONE"] = Field(description="The exact category of the error. Use 'NONE' if the query is valid.")
 
 def evaluate_cypher_result(question: str, cypher: str, explanation: str, db_output: Any, session_id: str = "eval_session_default", trace_id: str = None, oracle_expectations: Dict[str, Any] = None, trace_name: str = "cypher_evaluation") -> Dict[str, Any]:
     try:
@@ -17,16 +26,17 @@ def evaluate_cypher_result(question: str, cypher: str, explanation: str, db_outp
     variables = {"question": question,  "cypher": cypher,  "explanation": explanation,  "db_output": format_db_output(db_output),  "schema_doc": schema_doc, "oracle_expectations": json.dumps(oracle_expectations, indent=2, ensure_ascii=False) if oracle_expectations else "Aucune consigne de l'Oracle n'a été fournie."}
     
     logger.info(f"🔎 Evaluating query for question: '{question[:50]}...'")
-    response = call_llm_with_tracking(prompt_name="iyp-query-evaluator", variables=variables, session_id=session_id, trace_id=trace_id, trace_name=trace_name, tags=["evaluator"], response_format="json")
+    response = call_llm_with_tracking(prompt_name="iyp-query-evaluator", variables=variables, session_id=session_id, trace_id=trace_id, trace_name=trace_name, tags=["evaluator"], pydantic_schema=QueryEvaluation )
 
     if not response["success"]:
         return {"is_valid": False, "error_type": "SYSTEM", "analysis": f"LLM error: {response['error_message']}"}
 
-    try:
-        return json.loads(response["content"])
-    except json.JSONDecodeError:
-        return {"is_valid": False, "error_type": "SYSTEM", "analysis": "Invalid JSON response."}
+    content = response["content"] 
     
+    return {"is_valid": content.is_valid,"error_type": content.error_type,"analysis": content.analysis,"correction_hint": content.correction_hint}
+
+
+
 
 
 
@@ -52,24 +62,22 @@ if __name__ == "__main__":
     print(f"\n[1/3] GENERATING CYPHER...")
     gen_response = call_llm_with_tracking(
         prompt_name="iyp-cypher-generator",
-        variables={"schema_doc": load_schema_doc(), "question": test_question},
+        variables={"schema_doc": load_schema_doc(), "question": test_question, "previous_history": "None"},
         session_id=session_id,
         trace_name="test_generation",
-        model_name="gemini-2.5-flash",
-        response_format="json"
+        model_name="gemini-2.5-flash"
     )
 
     if not gen_response["success"]:
         print(f"❌ Generation failed: {gen_response['error_message']}")
         exit(1)
 
-    gen_data = json.loads(gen_response["content"])
-    generated_cypher = gen_data.get("cypher")
-    generated_explanation = gen_data.get("explanation")
+    gen_data = json.loads(gen_response["content"]) if isinstance(gen_response["content"], str) else gen_response["content"]
+    generated_cypher = gen_data.get("cypher") if isinstance(gen_data, dict) else gen_data.cypher
+    generated_explanation = gen_data.get("explanation") if isinstance(gen_data, dict) else gen_data.explanation
 
     print(f"✅ Generated Cypher: {generated_cypher}")
 
-    # --- STEP 2: EXECUTION ---
     print(f"\n[2/3] EXECUTING ON IYP DATABASE...")
     db_result = test_cypher_on_iyp_traced(generated_cypher)
 
@@ -78,11 +86,9 @@ if __name__ == "__main__":
     else:
         print(f"❌ DB Error: {db_result.get('message')}")
 
-    # --- STEP 3: EVALUATION ---
     print(f"\n[3/3] EVALUATING RESULTS...")
     eval_verdict = evaluate_cypher_result(question=test_question, cypher=generated_cypher, explanation=generated_explanation, db_output=db_result, session_id=session_id)
 
-    # --- FINAL SUMMARY ---
     print("\n" + "="*50)
     print("FINAL EVALUATION VERDICT")
     print("="*50)

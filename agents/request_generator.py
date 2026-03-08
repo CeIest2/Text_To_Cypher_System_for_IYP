@@ -1,24 +1,40 @@
-import json,logging
+import logging
 from typing import Dict, Any
+from pydantic import BaseModel, Field
+
 from utils.llm_caller import call_llm_with_tracking
-from utils.helpers import load_schema_doc, parse_llm_json
+from utils.helpers import load_schema_doc
 
 logger = logging.getLogger(__name__)
 
+class CypherGeneration(BaseModel):
+    reasoning: str   = Field(description="Step-by-step explanation of the chosen nodes/relationships. Explicitly mention any strategy changes based on previous attempts.")
+    cypher: str      = Field(description="The executable Cypher query.")
+    explanation: str = Field(description="A detailed technical explanation of how the query works.")
+
 def generate_cypher_query(user_question: str, session_id: str = "gen_session_default", trace_id: str = None, previous_history: str = "No previous attempts.", trace_name: str = "cypher_generation") -> Dict[str, Any]:
 
-    schema_doc  = load_schema_doc()
-    variables   = {"schema_doc": schema_doc, "question": user_question, "previous_history": previous_history}
-    response    = call_llm_with_tracking(prompt_name="iyp-cypher-generator", variables=variables, session_id=session_id, trace_id=trace_id, trace_name=trace_name, tags=["generator"], response_format="json" )
+    schema_doc = load_schema_doc()
+    variables = {
+        "schema_doc": schema_doc, 
+        "question": user_question, 
+        "previous_history": previous_history
+    }
+    
+    response = call_llm_with_tracking(prompt_name="iyp-cypher-generator", variables=variables, session_id=session_id, trace_id=trace_id, trace_name=trace_name, tags=["generator"], pydantic_schema=CypherGeneration) 
+    
     if response["success"]:
-        try:
-            content = parse_llm_json(response["content"])
-            return {"success": True,"reasoning": content.get("reasoning"),"cypher": content.get("cypher"),"explanation": content.get("explanation")}
-        except ValueError:
-            logger.error("LLM output could not be parsed as JSON.")
-            return {"success": False, "error_message": "LLM output format error: expected valid JSON."}
+        content = response["content"]
+        return {"success": True,"reasoning": content.reasoning,"cypher": content.cypher,"explanation": content.explanation}
     
     return response
+
+
+
+
+
+
+
 
 
 
@@ -37,7 +53,6 @@ if __name__ == "__main__":
 
     test_q = "How many ASNs are registered in France?"
     
-    # Perform generation
     result = generate_cypher_query(test_q, session_id="standalone_gen_test")
     
     if result["success"]:

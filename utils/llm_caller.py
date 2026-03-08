@@ -1,7 +1,8 @@
 import os
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Type
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
@@ -22,13 +23,8 @@ def _fetch_prompt_template(prompt_name: str) -> ChatPromptTemplate:
         logger.error(f"Erreur lors de la récupération du prompt '{prompt_name}': {e}")
         raise
 
-def _initialize_llm(model_name: str, temperature: float, response_format: str = "text") -> ChatGoogleGenerativeAI:
-    response_mime_type = "application/json" if response_format.lower() == "json" else "text/plain"
-    return ChatGoogleGenerativeAI(model=model_name, temperature=temperature, google_api_key=os.getenv("GOOGLE_API_KEY"),response_mime_type=response_mime_type,max_output_tokens=900)
-
-
 def _build_tracking_config(session_id: str, trace_name: str, tags: list, trace_id: str = None) -> dict:
-    metadata = {"langfuse_session_id": session_id, "langfuse_trace_name": trace_name, "langfuse_tags": tags,}
+    metadata = {"langfuse_session_id": session_id, "langfuse_trace_name": trace_name, "langfuse_tags": tags}
     if trace_id:
         metadata["langfuse_trace_id"] = trace_id 
     
@@ -38,13 +34,36 @@ def _build_tracking_config(session_id: str, trace_name: str, tags: list, trace_i
         "run_name": trace_name
     }
 
-def call_llm_with_tracking(prompt_name: str, variables: Dict[str, Any], session_id: str, trace_name: str = "llm_call", tags: List[str] = [], model_name: str = "gemini-2.5-flash-lite", temperature: float = 0.05, response_format: str = "text",trace_id: str = None) -> Dict[str, Any]:
+def call_llm_with_tracking(
+    prompt_name: str, 
+    variables: Dict[str, Any], 
+    session_id: str, 
+    trace_name: str = "llm_call", 
+    tags: List[str] = [], 
+    model_name: str = "gemini-2.5-flash-lite", 
+    temperature: float = 0.05, 
+    trace_id: str = None,
+    pydantic_schema: Optional[Type[BaseModel]] = None 
+) -> Dict[str, Any]:
+    
     try:
         prompt_template = _fetch_prompt_template(prompt_name)
-        llm             = _initialize_llm(model_name, temperature, response_format) 
+        
+        llm = ChatGoogleGenerativeAI(
+            model=model_name, 
+            temperature=temperature, 
+            google_api_key=os.getenv("GOOGLE_API_KEY"), 
+            max_output_tokens=900
+        )
+        
         tracking_config = _build_tracking_config(session_id, trace_name, tags, trace_id=trace_id)
         tracking_config["run_name"] = trace_name
-        chain           = prompt_template | llm | StrOutputParser()
+        
+        # Le pipeline est ultra simple
+        if pydantic_schema:
+            chain = prompt_template | llm.with_structured_output(pydantic_schema)
+        else:
+            chain = prompt_template | llm | StrOutputParser()
 
     except Exception as e:
         logger.error(f"Erreur d'initialisation LLM: {e}")
@@ -52,62 +71,49 @@ def call_llm_with_tracking(prompt_name: str, variables: Dict[str, Any], session_
     
     try:
         logger.info(f"Appel LLM pour '{trace_name}'...")
-        response_text = chain.invoke(variables, config=tracking_config)
-        return {"success": True, "content": response_text.strip(), "error_message": None}
+        response_content = chain.invoke(variables, config=tracking_config)
+            
+        return {"success": True, "content": response_content, "error_message": None}
     
     except Exception as e:
         logger.error(f"Échec de l'exécution LLM: {e}")
         return {"success": False, "content": None, "error_message": str(e)}
-    
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 if __name__ == "__main__":
-    import os
+    from pydantic import Field
+    
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     
+    class TestCypherGeneration(BaseModel):
+        reasoning: str = Field(description="Explication")
+        cypher: str = Field(description="Requête Cypher")
+        explanation: str = Field(description="Détails")
+
     schema_path = "docs/IYP_doc.md" 
     
     try:
         with open(schema_path, "r", encoding="utf-8") as f:
             real_schema_doc = f.read()
     except FileNotFoundError:
-        print(f"❌ Erreur : Le fichier {schema_path} est introuvable. Avez-vous mis le bon chemin ?")
+        print(f"❌ Erreur : Le fichier {schema_path} est introuvable.")
         exit(1) 
     
-    test_variables = {
-        "schema_doc": real_schema_doc,
-        "question": "Quelle est la part de marché (population servie) de l'AS 3215 en France ?"
-    }
+    test_variables = {"schema_doc": real_schema_doc,"question": "Quelle est la part de marché (population servie) de l'AS 3215 en France ?","previous_history": "No previous attempts."}
     
     result = call_llm_with_tracking(
         prompt_name="iyp-cypher-generator",
         variables=test_variables,
         session_id="test_reel_llm_001",
         trace_name="test_direct_call_reel",
-        tags=["test_reel", "llm_module"]
+        tags=["test_reel", "llm_module"],
+        pydantic_schema=TestCypherGeneration
     )
     
     print("\n" + "="*40)
-    print("RÉSULTAT DU TEST RÉEL")
+    print("RÉSULTAT DU TEST RÉEL AVEC PYDANTIC")
     print("="*40)
     
     if result["success"]:
-        print("✅ SUCCÈS ! Réponse générée :")
+        print("✅ SUCCÈS ! Réponse structurée obtenue :")
         print("-" * 40)
-        print(result["content"])
-        print("-" * 40)
-    else:
-        print("❌ ÉCHEC !")
-        print(f"Erreur rencontrée : {result['error_message']}")

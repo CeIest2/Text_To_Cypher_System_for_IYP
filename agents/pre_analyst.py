@@ -14,6 +14,7 @@ class PreAnalysisResult(BaseModel):
     expected_data_type: str         = Field(description="E.g., Float, List of strings, Integer...")
     is_empty_result_plausible: bool = Field(description="false if querying data about a major global player or a broad topic (empty result is a code error). true if querying an obscure player or a highly restrictive condition.")
     rejection_conditions: List[str] = Field(description="List of specific cases where the result MUST be considered an error (e.g., 'The result is an empty list []', 'The value is greater than 100', 'The list contains fewer than 3 items').")
+    technical_translation: str      = Field(description="Translate the vague user query into a strict graph traversal intent using exact node labels and relationship names from the schema.")
 
 def get_query_expectations(user_question: str, session_id: str = "pre_analyst_default", trace_id: str = None, trace_name: str = "pre_analysis") -> Dict[str, Any]:
     
@@ -25,7 +26,7 @@ def get_query_expectations(user_question: str, session_id: str = "pre_analyst_de
     if response["success"]:
         content = response["content"] 
         
-        return {"success": True, "real_world_context": content.real_world_context, "expected_data_type": content.expected_data_type, "is_empty_result_plausible": content.is_empty_result_plausible, "rejection_conditions": content.rejection_conditions,"implicit_filters": content.implicit_filters}
+        return {"success": True, "real_world_context": content.real_world_context, "expected_data_type": content.expected_data_type, "is_empty_result_plausible": content.is_empty_result_plausible, "rejection_conditions": content.rejection_conditions,"implicit_filters": content.implicit_filters, "technical_translation": content.technical_translation}
     
     return response
 

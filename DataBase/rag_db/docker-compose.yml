@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  neo4j-rag:
+    image: neo4j:5 
+    container_name: neo4j_rag_server
+    ports:
+      - "7475:7474"
+      - "7688:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/password 
+      - NEO4J_PLUGINS=["apoc"] 
+    volumes:
+      - neo4j_rag_data:/data 
+volumes:
+  neo4j_rag_data:

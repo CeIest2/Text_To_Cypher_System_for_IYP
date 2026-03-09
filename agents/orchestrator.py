@@ -144,17 +144,19 @@ def run_autonomous_loop(question: str, max_retries: int = 4, session_id: str = N
 
             logger.info("Récupération des exemples RAG en cours...")
             
-            trace_obj = langfuse.trace(id=run_id, session_id=session_id)
-            rag_span = trace_obj.span(name="Global_RAG_Retrieval", input={"search_intent": technical_intent})
-            
-            raw_examples = get_relevant_examples(technical_intent, top_k=3)
-            rag_context_text = format_rag_context(raw_examples)
-            
-            rag_span.update(output={"retrieved_examples": raw_examples})
-            rag_span.end()
+            # ✅ FIX: Use Langfuse v3 context manager instead of deprecated langfuse.trace().span()
+            with langfuse.start_as_current_observation(
+                name="Global_RAG_Retrieval",
+                as_type="span",
+                input={"search_intent": technical_intent}
+            ) as rag_span:
+                raw_examples = get_relevant_examples(technical_intent, top_k=3)
+                rag_context_text = format_rag_context(raw_examples)
+                rag_span.update(output={"retrieved_examples": raw_examples})
             
         except Exception as e:
             logger.error(f"💥 CRASH PYTHON dans get_query_expectations ou RAG: {e}")
+            logger.error(traceback.format_exc())
             oracle_res = {"success": False}
             rag_context_text = "No relevant examples found." 
             
@@ -162,7 +164,12 @@ def run_autonomous_loop(question: str, max_retries: int = 4, session_id: str = N
         implicit_filters    = "None"
         
         if oracle_res.get("success"):
-            oracle_expectations = {"real_world_context": oracle_res.get("real_world_context"),  "expected_data_type": oracle_res.get("expected_data_type"),  "is_empty_result_plausible": oracle_res.get("is_empty_result_plausible"),  "rejection_conditions": oracle_res.get("rejection_conditions")}
+            oracle_expectations = {
+                "real_world_context": oracle_res.get("real_world_context"),
+                "expected_data_type": oracle_res.get("expected_data_type"),
+                "is_empty_result_plausible": oracle_res.get("is_empty_result_plausible"),
+                "rejection_conditions": oracle_res.get("rejection_conditions")
+            }
             implicit_filters = oracle_res.get("implicit_filters") or "None"
 
         print("\n--- 🧠 Décomposition de la question ---")
@@ -181,7 +188,7 @@ def run_autonomous_loop(question: str, max_retries: int = 4, session_id: str = N
         is_complex     = decomposer_res.get("is_complex", False)
         sub_questions  = decomposer_res.get("sub_questions", [])
         context_data   = {} 
-
+        print(f"Décomposition terminée. Complexité: {'Complexe' if is_complex else 'Simple'}. Nombre de sous-questions: {len(sub_questions)}.")
         if is_complex and sub_questions:
             print(f"🧩 Question complexe détectée. Traitement en {len(sub_questions)} étapes.")
             
@@ -192,15 +199,15 @@ def run_autonomous_loop(question: str, max_retries: int = 4, session_id: str = N
                 
                 logger.info(f"🔍 Recherche RAG spécifique pour l'étape {step_num}...")
                 
-                # 🔥 AJOUT DU TRACING LANGFUSE POUR LE RAG PAR ÉTAPE (MULTI-HOP)
-                trace_obj = langfuse.trace(id=run_id, session_id=session_id)
-                step_rag_span = trace_obj.span(name=f"Step_{step_num}_RAG_Retrieval", input={"search_intent": intent})
-                
-                step_raw_examples = get_relevant_examples(intent, top_k=2) 
-                step_rag_context = format_rag_context(step_raw_examples)
-                
-                step_rag_span.update(output={"retrieved_examples": step_raw_examples})
-                step_rag_span.end()
+                # ✅ FIX: Use Langfuse v3 context manager for per-step RAG tracing
+                with langfuse.start_as_current_observation(
+                    name=f"Step_{step_num}_RAG_Retrieval",
+                    as_type="span",
+                    input={"search_intent": intent}
+                ) as step_rag_span:
+                    step_raw_examples = get_relevant_examples(intent, top_k=2) 
+                    step_rag_context = format_rag_context(step_raw_examples)
+                    step_rag_span.update(output={"retrieved_examples": step_raw_examples})
                 
                 step_result = resolve_query_with_retries(
                     target_question=intent, 
@@ -257,6 +264,6 @@ def run_autonomous_loop(question: str, max_retries: int = 4, session_id: str = N
 
 
 if __name__ == "__main__":
-    q = "Count the number of United States domains ranked in the top 100k by AS and, if possible, give the AS name specified by RIPE NCC. Return the ASN, AS name and count of domain names in descending order."
+    q = "Find AS nodes that map to the same OpaqueID as the AS node with asn 15735 and get the Prefix nodes originated by these ASes with the Country nodes of the prefixes. If possible, get the Name node for the AS as specified by reference_org RIPE NCC. Return AS, Prefix, Name, Country, and OpaqueID nodes for prefixes not located in the Country with country_code 'MT"
     result = run_autonomous_loop(q)
     print("\nFinal Result:", json.dumps(result, indent=2))

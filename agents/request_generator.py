@@ -12,12 +12,10 @@ class CypherGeneration(BaseModel):
     cypher: str      = Field(description="The executable Cypher query.")
     explanation: str = Field(description="A detailed technical explanation of how the query works.")
 
-# 🔥 Ajout du paramètre rag_examples
-def generate_cypher_query(user_question: str, session_id: str = "gen_session_default", trace_id: str = None, model: str = "gemini-2.5-flash", previous_history: str = "No previous attempts.", trace_name: str = "cypher_generation", rag_examples: str = "No relevant examples found.") -> Dict[str, Any]:
+def generate_cypher_query(user_question: str, session_id: str = "gen_session_default", trace_id: str = None, model: str = "gemini-2.5-flash-lite", previous_history: str = "No previous attempts.", trace_name: str = "cypher_generation", rag_examples: str = "No relevant examples found.") -> Dict[str, Any]:
 
     schema_doc = load_schema_doc()
     
-    # 🔥 Injection dans les variables pour le template Langfuse
     variables = {
         "schema_doc": schema_doc, 
         "question": user_question, 
@@ -25,7 +23,7 @@ def generate_cypher_query(user_question: str, session_id: str = "gen_session_def
         "rag_examples": rag_examples
     }
     
-    response = call_llm_with_tracking(prompt_name="iyp-cypher-generator", variables=variables, session_id=session_id, trace_id=trace_id, trace_name=trace_name, tags=["generator"], pydantic_schema=CypherGeneration) 
+    response = call_llm_with_tracking(prompt_name="iyp-cypher-generator", variables=variables, model_name=model,thinking_budget=0 , session_id=session_id, trace_id=trace_id, trace_name=trace_name, tags=["generator"], pydantic_schema=CypherGeneration) 
     
     if response["success"]:
         content = response["content"]

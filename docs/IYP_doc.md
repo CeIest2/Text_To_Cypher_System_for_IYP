@@ -60,13 +60,10 @@ An AS operates in multiple countries. To find its true Home/Registration Country
 - **Meaning:** Percentage of country population served by this AS. Used as a **proxy for Market Share**.
 
 ### Rankings (Tranco, Cisco Umbrella, CAIDA, IHR...)
-- **Abstract Pattern:** `(entity)-[r:RANK]->(:Ranking)`
-- **Meaning:** Connects a measured entity (`:DomainName`, `:HostName`, `:AS`, or `:Country`) to its specific ranking.
-- ✅ **KEY:** `r.rank` *(Integer)* gives the exact position/rank.
-- 🚨 **CRITICAL RULE FOR RANKINGS (CUTOFFS):** The `name` property of a `:Ranking` node is strictly categorical. DO NOT invent ranking names based on the user's prompt (e.g., NEVER write `(:Ranking {name: 'Tranco top 50k'})`). 
-- **Available Ranking Names (Exact Strings):** You MUST use one of these exact strings: `['Tranco top 1M', 'Cisco Umbrella Top 1 million', 'CAIDA ASRank', 'IHR country ranking: Total AS (JP)', 'IHR country ranking: Total AS (IR)']`.
-- To filter for a "Top N" (e.g., top 100, top 50k), you MUST query the appropriate fixed Ranking name and apply the mathematical filter on the EDGE property `r.rank`.
-- *Generic Example:* If a user asks for the "Top 50 ASes in CAIDA", use: `MATCH (a:AS)-[r:RANK]->(:Ranking {name: 'CAIDA ASRank'}) WHERE r.rank <= 50 RETURN a`
+- **Pattern:** `(entity)-[r:RANK]->(:Ranking)` — arrow always FROM entity TO Ranking, never reversed.
+- ✅ **KEY:** `r.rank` *(Integer)*
+- 🚨 **NEVER invent Ranking names.** Use only: `['Tranco top 1M', 'Cisco Umbrella Top 1 million', 'CAIDA ASRank', 'IHR country ranking: Total AS (JP)', 'IHR country ranking: Total AS (IR)']`
+- For "Top N" cutoffs, filter on `r.rank`: `MATCH (a:AS)-[r:RANK]->(:Ranking {name: 'CAIDA ASRank'}) WHERE r.rank <= 50`
 
 ### IP Prefixes & Routing
 - **Pattern:** `(:AS)-[:ORIGINATE]-(:Prefix)`

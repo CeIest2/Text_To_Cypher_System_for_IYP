@@ -18,8 +18,6 @@ def test_cypher_on_iyp_traced(cypher):
     return test_cypher_on_iyp(cypher)
 
 def test_cypher_on_iyp(query: str, parameters: dict = None) -> dict:
-
-    auth = (IYP_USER, IYP_PASSWORD) if IYP_USER and IYP_PASSWORD else None
     
     try:
         driver = DatabaseManager.get_driver("IYP")        

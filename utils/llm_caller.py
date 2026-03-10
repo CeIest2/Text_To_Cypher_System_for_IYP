@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=32)
-@lru_cache(maxsize=32)
 def _fetch_prompt_template(prompt_name: str) -> ChatPromptTemplate:
     try:
         logger.info(f"📥 Fetching prompt '{prompt_name}' from Langfuse (Cache MISS)...")

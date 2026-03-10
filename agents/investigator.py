@@ -26,45 +26,92 @@ def get_schema_doc() -> str:
         logger.warning(f"⚠️ Could not load schema doc for Investigator: {e}")
         return "Schema documentation unavailable. Rely on standard Neo4j conventions."
 
-def run_investigation(question: str, failed_cypher: str, error_message: str, session_id: str, trace_id: str = None, previous_history: str = "No previous attempts.", trace_prefix: str = "") -> Dict[str, Any]:
+def run_investigation(
+    question: str,
+    failed_cypher: str,
+    error_message: str,
+    session_id: str,
+    trace_id: str = None,
+    previous_history: str = "No previous attempts.",
+    trace_prefix: str = ""
+) -> Dict[str, Any]:
     logger.info("🕵️‍♂️ Starting Investigation Phase...")
 
     schema_doc = get_schema_doc()
-    
-    diag_vars = {"schema_doc": schema_doc,"question": question, "failed_cypher": failed_cypher, "error_message": error_message, "previous_history": previous_history}
-    
-    diag_response = call_llm_with_tracking(prompt_name="iyp-investigator-diagnostic",   variables=diag_vars,model_name="gemini-2.5-flash-lite", session_id=session_id, trace_id=trace_id, trace_name=f"{trace_prefix} Investigator Diagnostic".strip(), tags=["investigator"], pydantic_schema=InvestigatorDiagnostic)
+
+    diag_vars = {
+        "schema_doc": schema_doc,
+        "question": question,
+        "failed_cypher": failed_cypher,
+        "error_message": error_message,
+        "previous_history": previous_history
+    }
+
+    diag_response = call_llm_with_tracking(
+        prompt_name="iyp-investigator-diagnostic",
+        variables=diag_vars,
+        model_name="gemini-2.5-flash-lite",
+        session_id=session_id,
+        trace_id=trace_id,
+        trace_name=f"{trace_prefix} Investigator Diagnostic".strip(),
+        tags=["investigator"],
+        pydantic_schema=InvestigatorDiagnostic
+    )
 
     if not diag_response["success"]:
-        return {"report": f"Investigator Error (Diagnostic): {diag_response['error_message']}", "queries_tested": []}
+        return {
+            "report": f"Investigator Error (Diagnostic): {diag_response['error_message']}",
+            "test_queries": []  
+        }
 
     diag_data = diag_response["content"]
-    
+
     logger.info(f"🧠 Investigator Thought Process:\n{diag_data.thought_process}")
     logger.info(f"🎯 Investigator Hypotheses:\n{diag_data.hypotheses}")
-    
+
     test_queries = diag_data.test_queries
 
     if not test_queries:
-        return {"report": "The investigator did not find any relevant tests to perform based on the schema.", "queries_tested": []}
+        return {
+            "report": "The investigator did not find any relevant tests to perform based on the schema.",
+            "test_queries": []  
+        }
 
     test_results_summary = []
     for i, q in enumerate(test_queries[:3]):
         logger.info(f"🕵️‍♂️ Executing test {i+1}: {q}")
         db_res = test_cypher_on_iyp_traced(q)
-        
+
         if db_res.get("success"):
             data_str = json.dumps(db_res.get('data'), ensure_ascii=False, default=str)[:500]
             test_results_summary.append(f"Test Query: {q}\nResult: {data_str}")
         else:
             test_results_summary.append(f"Test Query: {q}\nResult: ERROR - {db_res.get('message')}")
 
-    synth_vars = {"question": question, "failed_cypher": failed_cypher, "test_results": "\n\n".join(test_results_summary)}
-    
-    synth_response = call_llm_with_tracking(prompt_name="iyp-investigator-synthesis", variables=synth_vars, session_id=session_id, trace_id=trace_id, trace_name=f"{trace_prefix} Investigator Synthesis".strip(), tags=["investigator"], pydantic_schema=InvestigatorSynthesis  )
+    synth_vars = {
+        "question": question,
+        "failed_cypher": failed_cypher,
+        "test_results": "\n\n".join(test_results_summary)
+    }
+
+    synth_response = call_llm_with_tracking(
+        prompt_name="iyp-investigator-synthesis",
+        variables=synth_vars,
+        session_id=session_id,
+        trace_id=trace_id,
+        trace_name=f"{trace_prefix} Investigator Synthesis".strip(),
+        tags=["investigator"],
+        pydantic_schema=InvestigatorSynthesis
+    )
 
     if synth_response["success"]:
-        synth_data = synth_response["content"] 
-        return {"report": synth_data.investigation_report, "queries_tested": test_queries}
-            
-    return {"report": "Investigation synthesis failed.", "queries_tested": test_queries}
+        synth_data = synth_response["content"]
+        return {
+            "report": synth_data.investigation_report,
+            "test_queries": test_queries  
+        }
+
+    return {
+        "report": "Investigation synthesis failed.",
+        "test_queries": test_queries  
+    }

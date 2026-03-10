@@ -1,9 +1,6 @@
-# agents/nodes.py
-
 import logging
-import traceback
 import json
-import concurrent.futures  # Remplacement de asyncio par le ThreadPool
+import concurrent.futures
 from typing import Dict, Any
 from langfuse import Langfuse
 from langchain_core.runnables import RunnableConfig
@@ -15,7 +12,7 @@ from agents.decomposer import decompose_query
 from agents.request_generator import generate_cypher_query
 from DataBase.IYP_connector import test_cypher_on_iyp_traced
 from agents.evaluator import evaluate_cypher_result
-from agents.investigator import run_investigation 
+from agents.investigator import run_investigation
 from utils.helpers import truncate_deep_lists
 
 logger = logging.getLogger(__name__)
@@ -28,11 +25,11 @@ def pre_analysis_node(state: AgentState, config: RunnableConfig) -> Dict[str, An
         oracle_res = get_query_expectations(state["question"], session_id=state["session_id"], trace_id=state["run_id"])
         tech_intent = oracle_res.get("technical_translation", "")
         rag_text = ""
-        
+
         if state["use_rag"]:
             raw = get_relevant_examples(tech_intent, top_k=3)
             rag_text = format_rag_context(raw)
-            
+
         return {
             "oracle_expectations": oracle_res if oracle_res.get("success") else None,
             "implicit_filters": oracle_res.get("implicit_filters") or "None",
@@ -42,23 +39,29 @@ def pre_analysis_node(state: AgentState, config: RunnableConfig) -> Dict[str, An
         logger.error(f"Pre-analysis fail: {e}")
         return {"oracle_expectations": None}
 
+
 def decomposition_node(state: AgentState) -> Dict[str, Any]:
     logger.info("🟢 [NODE] Decomposition")
-    res = decompose_query(state["question"], oracle_filters=state["implicit_filters"], rag_examples=state["rag_context_text"])
+    res = decompose_query(
+        state["question"],
+        oracle_filters=state["implicit_filters"],
+        rag_examples=state["rag_context_text"]
+    )
     return {
         "is_complex": res.get("is_complex", False),
         "sub_questions": res.get("sub_questions", []),
         "current_step_index": 0,
         "context_data": {},
-        "investigation_history": "" 
+        "investigation_history": ""
     }
+
 
 def generator_node(state: AgentState) -> Dict[str, Any]:
     idx = state["current_step_index"]
     intent = state["sub_questions"][idx].get("intent") if state["is_complex"] else state["question"]
-    
+
     logger.info(f"🟢 [NODE] Generator | Attempt {state['current_attempt'] + 1}")
-    
+
     full_intent = intent
     if state["context_data"]:
         full_intent += f"\n\nContext from previous steps:\n{json.dumps(state['context_data'])}"
@@ -75,6 +78,7 @@ def generator_node(state: AgentState) -> Dict[str, Any]:
         "current_intent": intent
     }
 
+
 def execution_node(state: AgentState) -> Dict[str, Any]:
     logger.info("🟢 [NODE] Execution")
     try:
@@ -86,9 +90,10 @@ def execution_node(state: AgentState) -> Dict[str, Any]:
     except Exception as e:
         return {"current_data": [], "error_message": str(e)}
 
+
 def evaluator_node(state: AgentState) -> Dict[str, Any]:
     logger.info("🟢 [NODE] Evaluation")
-    
+
     db_output = {
         "success": state["error_message"] is None,
         "data": truncate_deep_lists(state["current_data"], max_items=10),
@@ -123,29 +128,30 @@ def evaluator_node(state: AgentState) -> Dict[str, Any]:
         }
         updates["context_data"] = new_context
         updates["current_step_index"] = idx + 1
-        updates["current_attempt"] = 0 
-        updates["investigation_history"] = "" 
+        updates["current_attempt"] = 0
+        updates["investigation_history"] = ""
 
     return updates
 
 
 def investigator_node(state: AgentState) -> Dict[str, Any]:
     logger.info(f"🕵️‍♂️ [NODE] Parallel Investigation | Error: {state['error_type']}")
-    
+
     investigation_res = run_investigation(
         question=state["current_intent"] or state["question"],
         failed_cypher=state["current_cypher"],
         error_message=f"[{state['error_type']}] {state['error_message']}",
         previous_history=state["investigation_history"],
-        session_id=state["session_id"],  
-        trace_id=state["run_id"]        
+        session_id=state["session_id"],
+        trace_id=state["run_id"]
     )
+
     test_queries = investigation_res.get("test_queries", [])
     report_summary = investigation_res.get("report", "")
 
     if test_queries:
         logger.info(f"🚀 Running {len(test_queries)} test queries in parallel with ThreadPool...")
-        
+
         def execute_test(q):
             try:
                 res = test_cypher_on_iyp_traced(q)
@@ -157,7 +163,7 @@ def investigator_node(state: AgentState) -> Dict[str, Any]:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             results = list(executor.map(execute_test, test_queries))
-            
+
         parallel_results_text = "\n\n".join(results)
     else:
         parallel_results_text = "No test queries executed."
@@ -169,5 +175,5 @@ def investigator_node(state: AgentState) -> Dict[str, Any]:
         f"Diagnostic Report: {report_summary}\n"
         f"Parallel Test Results:\n{parallel_results_text}\n"
     )
-    
+
     return {"investigation_history": history_update}

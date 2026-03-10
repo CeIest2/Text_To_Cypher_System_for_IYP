@@ -3,6 +3,8 @@ import logging
 from typing import Dict, Any, List, Optional, Type
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from functools import lru_cache
+from utils.local_prompts import LOCAL_FALLBACK_PROMPTS
 
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
@@ -14,14 +16,27 @@ load_dotenv()
 langfuse_client = Langfuse()
 logger = logging.getLogger(__name__)
 
+
+@lru_cache(maxsize=32)
+@lru_cache(maxsize=32)
 def _fetch_prompt_template(prompt_name: str) -> ChatPromptTemplate:
     try:
+        logger.info(f"📥 Fetching prompt '{prompt_name}' from Langfuse (Cache MISS)...")
         langfuse_prompt = langfuse_client.get_prompt(prompt_name)
         prompt_messages = langfuse_prompt.get_langchain_prompt()
+        logger.debug(f"✅ Successfully loaded '{prompt_name}' from Langfuse.")
         return ChatPromptTemplate.from_messages(prompt_messages)
+        
     except Exception as e:
-        logger.error(f"Erreur lors de la récupération du prompt '{prompt_name}': {e}")
-        raise
+        logger.warning(f"⚠️ Langfuse unreachable or prompt missing: {e}.")
+        logger.warning(f"🛡️ Switching to LOCAL FALLBACK for '{prompt_name}'...")
+        
+        if prompt_name in LOCAL_FALLBACK_PROMPTS:
+            fallback_messages = LOCAL_FALLBACK_PROMPTS[prompt_name]
+            return ChatPromptTemplate.from_messages(fallback_messages)
+        else:
+            logger.error(f"❌ CRITICAL: No local fallback found for '{prompt_name}'!")
+            raise
 
 def _build_tracking_config(session_id: str, trace_name: str, tags: list, trace_id: str = None) -> dict:
     metadata = {"langfuse_session_id": session_id, "langfuse_trace_name": trace_name, "langfuse_tags": tags}

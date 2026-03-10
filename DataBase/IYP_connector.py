@@ -4,6 +4,7 @@ import langfuse
 from neo4j import GraphDatabase
 from neo4j.exceptions import Neo4jError
 from dotenv import load_dotenv
+from DataBase.db_client import DatabaseManager
 
 load_dotenv()
 
@@ -21,13 +22,11 @@ def test_cypher_on_iyp(query: str, parameters: dict = None) -> dict:
     auth = (IYP_USER, IYP_PASSWORD) if IYP_USER and IYP_PASSWORD else None
     
     try:
-        with GraphDatabase.driver(IYP_URI, auth=auth) as driver:
-            driver.verify_connectivity()
-            
-            records, summary, keys = driver.execute_query(query,parameters_=parameters,routing_="r", database_="neo4j", transaction_config={"timeout": 120.0} )
-            
-            return {"success": True, "keys": keys, "data": [record.data() for record in records], "metadata": { "query_type": summary.query_type, "time_ms": summary.result_available_after}}
-            
+        driver = DatabaseManager.get_driver("IYP")        
+        records, summary, keys = driver.execute_query(query,parameters_=parameters,routing_="r", database_="neo4j", transaction_config={"timeout": 120.0} )
+        
+        return {"success": True, "keys": keys, "data": [record.data() for record in records], "metadata": { "query_type": summary.query_type, "time_ms": summary.result_available_after}}
+        
     except Neo4jError as e:
         return {"success": False, "error_type": "Neo4jError","message": e.message, "code": e.code}
     except Exception as e:

@@ -264,6 +264,20 @@ def run_autonomous_loop(question: str, max_retries: int = 4, session_id: str = N
 
 
 if __name__ == "__main__":
+    from DataBase.db_client import DatabaseManager 
+
     q = "Find the distinct Prefix's prefixes that depend on the AS with asn 109."
-    result = run_autonomous_loop(q,use_rag=False)
-    print("\nFinal Result:", json.dumps(result, indent=2))
+    
+    try:
+        print(f"\n🚀 Starting autonomous loop for query: '{q}'")
+        result = run_autonomous_loop(q, use_rag=True)
+        print("\n✅ Final Result:\n", json.dumps(result, indent=2))
+        
+    except Exception as e:
+        print(f"\n❌ Fatal error during execution: {e}")
+        logger.error(traceback.format_exc())
+        
+    finally:
+        print("\n🧹 Cleaning up database connections...")
+        DatabaseManager.close_all()
+        print("👋 Exiting program.")

@@ -8,9 +8,11 @@ import concurrent.futures
 import logging
 from datetime import datetime
 from typing import List, Dict, Optional, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from agents.orchestrator import run_autonomous_loop
+# 1. NOUVEL IMPORT LANGGRAPH
+from agents.graph_orchestrator import run_graph_agent
+from DataBase.db_client import DatabaseManager # Pour la fermeture finale
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -53,7 +55,7 @@ class BenchmarkReport(BaseModel):
     details: List[TestDetail] = []
 
 
-def process_single_test(index: int, row: Dict[str, str], report: BenchmarkReport, report_filename: str,use_rag: bool = False):
+def process_single_test(index: int, row: Dict[str, str], report: BenchmarkReport, report_filename: str, use_rag: bool = False):
     """Exécute un test unique et met à jour le rapport partagé."""
     task_id          = row.get('Task ID', 'N/A')
     difficulty       = row.get('Difficulty Level', 'Unknown')
@@ -66,13 +68,16 @@ def process_single_test(index: int, row: Dict[str, str], report: BenchmarkReport
     failure_reason = None
     
     try:
-        agent_result = run_autonomous_loop(prompt, session_id=report.session_id, use_rag=use_rag)
+        # 2. NOUVEL APPEL LANGGRAPH
+        agent_result = run_graph_agent(prompt, session_id=report.session_id, max_retries=4, use_rag=use_rag)
+        
         status       = agent_result.get("status", "FAILED")
         iterations   = agent_result.get("iterations", 0)
         final_cypher = agent_result.get("cypher", "None")
         
         if status == "FAILED":
-            failure_reason = agent_result.get("reason") or f"Max retries reached ({iterations} attempts)"
+            # Le graphe ne renvoie pas de 'reason' explicite dans l'output final, on utilise le fallback
+            failure_reason = f"Max retries reached or Execution failed ({iterations} attempts)"
             
     except Exception as e:
         status       = "FAILED"
@@ -151,35 +156,39 @@ def run_cyphereval_benchmark(csv_file_path: str, limit: int = None, start_at: in
         logger.error(f"CSV file not found: {csv_file_path}")
         return
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [
-            executor.submit(process_single_test, index, row, report, report_filename, use_rag=use_rag)
-            for index, row in tasks_to_run
-        ]
-        concurrent.futures.wait(futures)
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(process_single_test, index, row, report, report_filename, use_rag=use_rag)
+                for index, row in tasks_to_run
+            ]
+            concurrent.futures.wait(futures)
 
-    # Résumé final
-    print("\n" + "*"*50)
-    print("🏆 FINAL BENCHMARK RESULTS 🏆")
-    print("*"*50)
-    
-    g = report.stats_current_run["global"]
-    if g.total > 0:
-        global_rate = (g.success / g.total) * 100
-        print(f"🌍 Global Success Rate: {global_rate:.2f}% ({g.success}/{g.total})")
+        # Résumé final
+        print("\n" + "*"*50)
+        print("🏆 FINAL BENCHMARK RESULTS 🏆")
+        print("*"*50)
         
-        print("\n📊 Detail by difficulty:")
-        for diff, stats in report.stats_current_run["by_difficulty"].items():
-            rate = (stats.success / stats.total) * 100
-            print(f"  - {diff} : {rate:.2f}% ({stats.success}/{stats.total})")
-    else:
-        print("No tests were executed.")
+        g = report.stats_current_run["global"]
+        if g.total > 0:
+            global_rate = (g.success / g.total) * 100
+            print(f"🌍 Global Success Rate: {global_rate:.2f}% ({g.success}/{g.total})")
+            
+            print("\n📊 Detail by difficulty:")
+            for diff, stats in report.stats_current_run["by_difficulty"].items():
+                rate = (stats.success / stats.total) * 100
+                print(f"  - {diff} : {rate:.2f}% ({stats.success}/{stats.total})")
+        else:
+            print("No tests were executed.")
 
-    final_output = "benchmark_report_final.json"
-    with open(final_output, "w", encoding="utf-8") as f:
-        f.write(report.model_dump_json(indent=4))
-        
-    logger.info(f"📝 Final report saved in '{final_output}'")
+        final_output = "benchmark_report_final.json"
+        with open(final_output, "w", encoding="utf-8") as f:
+            f.write(report.model_dump_json(indent=4))
+            
+        logger.info(f"📝 Final report saved in '{final_output}'")
+
+    finally:
+        DatabaseManager.close_all()
 
 if __name__ == "__main__":
-    run_cyphereval_benchmark("variation-B.csv", limit=None, start_at=0, max_workers=12, use_rag=True)
+    run_cyphereval_benchmark("variation-B.csv", limit=25, start_at=0, max_workers=12, use_rag=False)

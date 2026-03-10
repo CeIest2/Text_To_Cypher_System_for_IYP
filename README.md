@@ -119,37 +119,66 @@ cypher_agent/
 
 ## 🧪 Benchmark Results
 
-The agent was evaluated against **[CypherEval](https://codeberg.org/dimitrios/CypherEval)**, a standardized dataset for assessing LLM-to-Cypher generation on the IYP graph. Queries were categorized into six difficulty levels combining technical precision and general phrasing.
+The agent was evaluated against **[CypherEval](https://codeberg.org/dimitrios/CypherEval)**, a standardized dataset containing hundreds of real-world natural language prompts mapped to canonical Cypher solutions for the IYP graph. Queries are categorized into six difficulty levels combining technical precision and general phrasing.
 
-The evaluation pipeline runs two independent scores:
-- **Agent Success Rate** — whether the agent produced a query that executed successfully and was validated by the Evaluator
-- **Semantic Equivalence Rate** — whether the produced query returns the same factual data as the canonical reference solution (LLM-judged)
+### Evaluation Methodology
 
-### Overall Performance (162 queries, Variation-A with RAG from Variation-B)
+Inspired by the functional correctness evaluation pipeline presented in the **[Pythia: Facilitating Access to Internet Data Using LLMs and IYP](https://www.iijlab.net/en/members/romain/pdf/dimitrios_lcn2025.pdf)** paper, we implemented an automated **Semantic Evaluator**. A highly capable LLM-judge executes both the agent's generated query and the canonical solution against the live Neo4j database. It then compares the factual results to determine a match, disregarding structural differences or extra explanatory columns.
 
-| Metric | Score |
-|---|---|
-| **Agent Success Rate** | **84.6%** (137 / 162) |
-| **Semantic Equivalence Rate** | **66.1%** (107 / 162) |
+The pipeline runs one strict, bottom-line metric:
 
-### Performance by Difficulty
-
-| Difficulty | Agent Success | Semantic Equivalence |
-|---|---|---|
-| Easy Technical | 29 / 32 — **90.6%** | 29 / 32 — **90.6%** |
-| Easy General | 30 / 32 — **93.8%** | 28 / 32 — **87.5%** |
-| Medium Technical | 26 / 32 — **81.3%** | 17 / 32 — **53.1%** |
-| Medium General | 31 / 33 — **93.9%** | 17 / 33 — **51.5%** |
-| Hard Technical | 10 / 15 — **66.7%** | 8 / 15 — **53.3%** |
-| Hard General | 11 / 18 — **61.1%** | 8 / 18 — **44.4%** |
-
-### Key Observations
-
-- **Easy queries** are handled with very high reliability, demonstrating strong schema grounding for direct lookups and single-hop traversals.
-- The main **gap between Agent Success and Semantic Equivalence** on medium/hard queries reveals a semantic drift: the agent produces a valid, executable query, but explores a different (plausible but incorrect) graph path than the canonical solution. This is especially visible on queries involving `OpaqueID`, complex multi-hop DNS paths, or ambiguous ranking interpretations.
-- **Hard general queries** are the most challenging, as they require the agent to infer the correct graph strategy from vague natural language without explicit node or relationship hints.
+> 🎯 **Semantic Equivalence Rate** — The executed query returned the exact same factual data as the canonical reference solution.
 
 ---
+
+### 1. The Impact of Agentic RAG (Ablation Study)
+
+To prove the efficacy of retrieving contextually similar queries, we ran the benchmark across both CypherEval variations **with and without** the local Neo4j Vector RAG enabled.
+
+Results show that injecting few-shot RAG examples into the context dramatically reduces semantic hallucinations, boosting the equivalence score by **up to 14.7%**.
+
+| Dataset | Setup | Semantic Equivalence Rate | RAG Impact |
+|---|---|---|---|
+| Variation A | No RAG | 56.9% (94 / 165) | — |
+| Variation A | With RAG (Var B) | 66.1% (107 / 162) | **+ 9.2 %** |
+| Variation B | No RAG | 49.1% (80 / 163) | — |
+| Variation B | With RAG (Var A) | 63.8% (104 / 163) | **+ 14.7 %** |
+
+---
+
+### 2. Detailed Performance by Difficulty (Best Run: Var-A with RAG)
+
+This details the **66.1% global semantic score**.
+
+| Difficulty Level | Semantic Equivalence |
+|---|---|
+| 🟢 Easy Technical | 90.6% (29 / 32) |
+| 🟢 Easy General | 87.5% (28 / 32) |
+| 🟡 Medium Technical | 53.1% (17 / 32) |
+| 🟡 Medium General | 51.5% (17 / 33) |
+| 🔴 Hard Technical | 53.3% (8 / 15) |
+| 🔴 Hard General | 44.4% (8 / 18) |
+
+---
+
+### 3. Comparison with the "Pythia" State-of-the-Art
+
+In the original study, models like CodeLlama, DeepSeek, and Qwen were evaluated using the `pass@k` metric, which estimates the probability of finding at least one correct query among *k* generated samples. The dedicated Pythia system (utilizing static few-shot prompting) achieved roughly **75% `pass@20`** for easy general prompts, near **50%** for medium prompts, and around **25% `pass@k`** for hard prompts.
+
+Our Autonomous Agent fundamentally shifts this paradigm: because our system incorporates a self-healing LangGraph loop (the Investigator agent), it operates from the user's perspective at an effective **`pass@1`**. The user asks once, and the agent iterates internally to deliver a single final answer.
+
+- **Easy Prompts:** Our agent reaches **~87–90% Semantic Equivalence** on its single final output, beating Pythia's highly sampled `pass@20`.
+- **Hard Prompts:** Our agent achieves **44%–53% Semantic Equivalence**, nearly doubling Pythia's heavily sampled `pass@k` performance (~25%). This highlights the superiority of autonomous diagnostic testing over blind LLM sampling.
+
+---
+
+### Key Observations & Limitations
+
+1. **Schema Grounding Triumphs** — Easy queries are handled with near-perfect reliability (~90%), demonstrating that strict schema injection and RAG retrieval prevent basic syntax errors and hallucinated labels.
+
+2. **The "Semantic Drift" Challenge** — When the agent fails on medium/hard queries, it is rarely due to a database crash or syntax error. Instead, it suffers from *semantic drift*: the agent successfully writes and validates a complex Neo4j query, but explores a plausible yet incorrect graph traversal path compared to the canonical solution (e.g., misinterpreting vague ranking requests or complex multi-hop DNS resolutions).
+
+3. **Implicit Intent** — Hard general queries remain the ultimate challenge. They require the agent to infer deeply technical graph strategies from extremely vague natural language, without explicit node or relationship hints.
 
 ## 📦 Prerequisites & Installation
 

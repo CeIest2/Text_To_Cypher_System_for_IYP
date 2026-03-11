@@ -1,28 +1,20 @@
 import os
 import json
-from langfuse import Langfuse
 from neo4j.exceptions import Neo4jError
 from dotenv import load_dotenv
 from DataBase.db_client import DatabaseManager
 
 load_dotenv()
 
-langfuse = Langfuse()
-
 
 def test_cypher_on_iyp_traced(cypher: str) -> dict:
-
-    with langfuse.start_as_current_observation(
-        name="Neo4j_Execution",
-        as_type="span",
-        input=cypher
-    ) as span:
-        result = test_cypher_on_iyp(cypher)
-        span.update(output={
-            "success":   result.get("success"),
-            "row_count": len(result.get("data", []))
-        })
-        return result
+    """
+    Alias direct vers test_cypher_on_iyp.
+    Le tracing est géré par le contexte parent (LangGraph CallbackHandler) :
+    un span Langfuse autonome ici créerait une trace racine indépendante
+    non rattachée à la question en cours de traitement.
+    """
+    return test_cypher_on_iyp(cypher)
 
 
 def test_cypher_on_iyp(query: str, parameters: dict = None) -> dict:

@@ -13,7 +13,7 @@ from agents.nodes import (
     execution_node,
     evaluator_node,
     investigator_node,
-    final_synthesis_node, 
+    final_synthesis_node,
 )
 from DataBase.db_client import DatabaseManager
 
@@ -25,15 +25,6 @@ def route_after_decomposition(state: AgentState) -> str:
 
 
 def route_after_evaluation(state: AgentState) -> str:
-    """
-    Décision centrale du graphe après chaque évaluation.
-
-    Cas 1 — Succès sur une question simple        → END
-    Cas 2 — Succès sur un step intermédiaire      → generator (prochain step)
-    Cas 3 — Succès sur le dernier step complexe   → final_synthesis
-    Cas 4 — Échec avec retries disponibles        → investigator
-    Cas 5 — Échec max retries atteint             → END
-    """
     if state["is_valid"]:
         if state["is_complex"]:
             if state["current_step_index"] < len(state["sub_questions"]):
@@ -55,7 +46,7 @@ workflow.add_node("generator",       generator_node)
 workflow.add_node("execution",       execution_node)
 workflow.add_node("evaluator",       evaluator_node)
 workflow.add_node("investigator",    investigator_node)
-workflow.add_node("final_synthesis", final_synthesis_node)  # ✅
+workflow.add_node("final_synthesis", final_synthesis_node)
 
 workflow.set_entry_point("pre_analysis")
 workflow.add_edge("pre_analysis",  "decomposition")
@@ -75,13 +66,13 @@ workflow.add_conditional_edges(
     {
         "generator":       "generator",
         "investigator":    "investigator",
-        "final_synthesis": "final_synthesis", 
+        "final_synthesis": "final_synthesis",
         END:               END
     }
 )
 
 workflow.add_edge("investigator",    "generator")
-workflow.add_edge("final_synthesis", "generator") 
+workflow.add_edge("final_synthesis", "generator")
 
 app = workflow.compile()
 
@@ -96,6 +87,11 @@ def run_graph_agent(
         session_id = f"graph_session_{uuid.uuid4().hex[:8]}"
 
     run_id = uuid.uuid4().hex
+
+    # Le session_id est transmis via les métadonnées du config LangGraph.
+    # Langfuse lit "langfuse_session_id" depuis ce dict pour regrouper
+    # toutes les traces d'une même exécution (ou d'un benchmark complet)
+    # dans la même session.
     langfuse_handler = CallbackHandler()
 
     initial_state = {
@@ -116,7 +112,10 @@ def run_graph_agent(
         initial_state,
         config={
             "callbacks": [langfuse_handler],
-            "run_name": "LangGraph_Autonomous_Agent"
+            "run_name":  "LangGraph_Autonomous_Agent",
+            "metadata": {
+                "langfuse_session_id": session_id,
+            }
         }
     )
 
@@ -131,7 +130,7 @@ def run_graph_agent(
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
-    q = "Find nodes of any type that are        connected to the node corresponding to Prefix '1.1.1.0/24'."
+    q = "Find nodes of any type that are connected to the node corresponding to Prefix '1.1.1.0/24'."
 
     try:
         print(f"\n🚀 Launching LangGraph Agent for: {q}")

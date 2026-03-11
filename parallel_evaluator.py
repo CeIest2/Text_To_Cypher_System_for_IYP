@@ -177,7 +177,7 @@ def run_parallel_post_benchmark(input_json_path: str, output_json_path: str, max
 
 if __name__ == "__main__":
 
-    INPUT_FILE  = "banch_variation-B_with_RAG_of_variation_A.json" 
-    OUTPUT_FILE = "banch_commparaison_variation-B_with_rag_of_variation_A.json"
+    INPUT_FILE  = "benchmark_report_final.json" 
+    OUTPUT_FILE = "benchmark_comparative_B.json"
 
     run_parallel_post_benchmark(INPUT_FILE, OUTPUT_FILE, max_parallel_tasks=15)

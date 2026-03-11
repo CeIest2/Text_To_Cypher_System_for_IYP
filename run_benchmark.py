@@ -191,4 +191,4 @@ def run_cyphereval_benchmark(csv_file_path: str, limit: int = None, start_at: in
         DatabaseManager.close_all()
 
 if __name__ == "__main__":
-    run_cyphereval_benchmark("variation-B.csv", limit=25, start_at=0, max_workers=12, use_rag=False)
+    run_cyphereval_benchmark("variation-B.csv", limit=25, start_at=0, max_workers=12, use_rag=True)

@@ -1,5 +1,3 @@
-# DataBase/db_client.py
-
 import os
 import logging
 import threading

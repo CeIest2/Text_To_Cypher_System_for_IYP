@@ -34,8 +34,6 @@ def pre_analysis_node(state: AgentState, config: RunnableConfig) -> Dict[str, An
         rag_text    = ""
 
         if state["use_rag"]:
-            # ✅ FIX Erreur 1: suppression de trace_id — get_relevant_examples()
-            # n'accepte pas cet argument → TypeError à l'exécution
             raw      = get_relevant_examples(tech_intent, top_k=3)
             rag_text = format_rag_context(raw)
 
@@ -46,9 +44,6 @@ def pre_analysis_node(state: AgentState, config: RunnableConfig) -> Dict[str, An
         }
     except Exception as e:
         logger.error(f"Pre-analysis fail: {e}")
-        # ✅ FIX Erreur 2: retour incomplet dans le except
-        # Sans implicit_filters et rag_context_text, decomposition_node
-        # leve un KeyError au premier acces a state["implicit_filters"]
         return {
             "oracle_expectations": None,
             "implicit_filters":    "None",
@@ -68,7 +63,6 @@ def decomposition_node(state: AgentState) -> Dict[str, Any]:
         "sub_questions": res.get("sub_questions", []),
         "current_step_index": 0,
         "context_data": {},
-        # ✅ FIX Bug 2: None déclenche le reset via history_reducer
         "investigation_history": None
     }
 
@@ -147,7 +141,6 @@ def evaluator_node(state: AgentState) -> Dict[str, Any]:
         updates["context_data"] = new_context
         updates["current_step_index"] = idx + 1
         updates["current_attempt"] = 0
-        # ✅ FIX Bug 2: None → reset propre via history_reducer pour le prochain step
         updates["investigation_history"] = None
 
     return updates
@@ -165,7 +158,6 @@ def investigator_node(state: AgentState) -> Dict[str, Any]:
         trace_id=state["run_id"]
     )
 
-    # ✅ FIX: la clé est maintenant "test_queries" dans investigator.py
     test_queries = investigation_res.get("test_queries", [])
     report_summary = investigation_res.get("report", "")
 
@@ -174,7 +166,6 @@ def investigator_node(state: AgentState) -> Dict[str, Any]:
 
         def execute_test(q):
             try:
-                # test_cypher_on_iyp_traced ne prend qu'un seul argument (la query)
                 res = test_cypher_on_iyp_traced(q)
                 status = "✅ Success" if res.get("success") else "❌ Fail"
                 data_sample = str(res.get("data", []))[:200]
@@ -201,20 +192,8 @@ def investigator_node(state: AgentState) -> Dict[str, Any]:
 
 
 def final_synthesis_node(state: AgentState) -> Dict[str, Any]:
-    """
-    ✅ FIX Bug 5: node de synthèse finale pour les questions complexes.
-
-    Problème original : pour les questions complexes, le graph allait
-    directement à END après le dernier step, retournant le résultat
-    de la dernière sous-question au lieu de répondre à la question initiale.
-
-    Ce node prépare une question de synthèse en injectant tous les
-    résultats intermédiaires comme contexte, puis renvoie vers generator
-    pour produire la query Cypher finale unifiée.
-    """
     logger.info("🏁 [NODE] Final Synthesis — preparing unified query from all steps")
 
-    # Construit un résumé lisible de tous les steps résolus
     steps_summary = json.dumps(state["context_data"], indent=2, ensure_ascii=False)
 
     synthesis_intent = (
@@ -227,10 +206,8 @@ def final_synthesis_node(state: AgentState) -> Dict[str, Any]:
     )
 
     return {
-        # On réinitialise le step courant pour que generator_node
-        # utilise la synthesis_intent et non une sous-question
         "is_complex":            False,
         "current_intent":        synthesis_intent,
         "current_attempt":       0,
-        "investigation_history": None,  # reset propre via history_reducer
+        "investigation_history": None,  
     }

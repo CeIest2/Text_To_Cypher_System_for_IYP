@@ -88,10 +88,6 @@ def run_graph_agent(
 
     run_id = uuid.uuid4().hex
 
-    # Le session_id est transmis via les métadonnées du config LangGraph.
-    # Langfuse lit "langfuse_session_id" depuis ce dict pour regrouper
-    # toutes les traces d'une même exécution (ou d'un benchmark complet)
-    # dans la même session.
     langfuse_handler = CallbackHandler()
 
     initial_state = {

@@ -10,17 +10,14 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel
 
-# 1. NOUVEL IMPORT LANGGRAPH
 from agents.graph_orchestrator import run_graph_agent
-from DataBase.db_client import DatabaseManager # Pour la fermeture finale
+from DataBase.db_client import DatabaseManager 
 
-# Configuration du logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 file_lock = threading.Lock()
 
-# --- Modèles de données ---
 
 class TestDetail(BaseModel):
     """Détails complets d'un test individuel."""
@@ -68,7 +65,6 @@ def process_single_test(index: int, row: Dict[str, str], report: BenchmarkReport
     failure_reason = None
     
     try:
-        # 2. NOUVEL APPEL LANGGRAPH
         agent_result = run_graph_agent(prompt, session_id=report.session_id, max_retries=4, use_rag=use_rag)
         
         status       = agent_result.get("status", "FAILED")
@@ -76,7 +72,6 @@ def process_single_test(index: int, row: Dict[str, str], report: BenchmarkReport
         final_cypher = agent_result.get("cypher", "None")
         
         if status == "FAILED":
-            # Le graphe ne renvoie pas de 'reason' explicite dans l'output final, on utilise le fallback
             failure_reason = f"Max retries reached or Execution failed ({iterations} attempts)"
             
     except Exception as e:
@@ -122,7 +117,6 @@ def process_single_test(index: int, row: Dict[str, str], report: BenchmarkReport
         with open(report_filename, "w", encoding="utf-8") as f:
             f.write(report.model_dump_json(indent=4))
         
-        # Affichage du score en temps réel
         g = report.stats_current_run["global"]
         rate = (g.success / g.total) * 100
         logger.info(f"📈 CURRENT SCORE: {g.success}/{g.total} ({rate:.2f}%)")
@@ -134,7 +128,6 @@ def run_cyphereval_benchmark(csv_file_path: str, limit: int = None, start_at: in
     date_str = datetime.now().strftime("%Y%m%d_%H%M")
     report_filename = f"benchmark_report_{date_str}.json"
     
-    # Initialisation du rapport via Pydantic
     report = BenchmarkReport(
         session_id=f"benchmark_{date_str}_{uuid.uuid4().hex[:4]}",
         last_updated=datetime.now().isoformat()
@@ -164,7 +157,6 @@ def run_cyphereval_benchmark(csv_file_path: str, limit: int = None, start_at: in
             ]
             concurrent.futures.wait(futures)
 
-        # Résumé final
         print("\n" + "*"*50)
         print("🏆 FINAL BENCHMARK RESULTS 🏆")
         print("*"*50)

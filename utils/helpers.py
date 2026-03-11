@@ -36,10 +36,6 @@ def truncate_deep_lists(data, max_items=50):
         return data
 
 def format_db_output(data: Any, max_items: int = 50, max_length: int = 5000) -> str:
-    """
-    Formate la donnée en JSON, en limitant la profondeur des listes et 
-    en coupant la chaîne finale à `max_length` caractères.
-    """
     if data is None:
         return "No data returned (None)."
     

@@ -8,12 +8,6 @@ load_dotenv()
 
 
 def test_cypher_on_iyp_traced(cypher: str) -> dict:
-    """
-    Alias direct vers test_cypher_on_iyp.
-    Le tracing est géré par le contexte parent (LangGraph CallbackHandler) :
-    un span Langfuse autonome ici créerait une trace racine indépendante
-    non rattachée à la question en cours de traitement.
-    """
     return test_cypher_on_iyp(cypher)
 
 

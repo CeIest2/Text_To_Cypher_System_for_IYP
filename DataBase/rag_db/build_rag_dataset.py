@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-# Chemins de fichiers
 CSV_PATH = "variation-B.csv" 
 JSON_OUTPUT_PATH = "docs/few_shot_examples-variation-B.json"
 

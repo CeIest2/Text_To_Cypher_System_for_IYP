@@ -16,12 +16,6 @@ embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 
 
 def get_relevant_examples(search_intent: str, top_k: int = 3) -> List[Dict[str, Any]]:
-    """
-    Recherche vectorielle dans la base RAG.
-    Le tracing (embedding + recherche Neo4j) est intentionnellement retiré :
-    les spans Langfuse autonomes créaient des traces racines indépendantes
-    non rattachées à la question en cours de traitement.
-    """
     logger.info(f"🔍 Recherche RAG pour l'intention : '{search_intent[:50]}...'")
 
     try:
